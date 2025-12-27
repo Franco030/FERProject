@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 4.1)
-project(FERProject C)
+project(cfer C)
 
 set(CMAKE_C_STANDARD 17)
 
@@ -12,4 +12,6 @@ add_executable(cfer main.c
         debug.h
         debug.c
         value.c
-        value.h)
+        value.h
+        vm.c
+        vm.h)
