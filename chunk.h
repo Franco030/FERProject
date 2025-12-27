@@ -1,17 +1,40 @@
-#ifndef FERPROJECT_CHUNK_H
-#define FERPROJECT_CHUNK_H
+#ifndef CFER_CHUNK_H
+#define CFER_CHUNK_H
 
 // chunks will be sequences of bytecode
 
 #include "common.h"
+#include "value.h"
 
 /*
  * In our bytecode format, each instruction has a one-byte operation code
  * (universally shortened to opcode). That number controls what kind of instruction
- * we're dealing with, add, subtract, look up variable, etc. We define those here:
+ * we're dealing with, add, subtract, look up variable, etc. We define those here.
+ *
+ * The compiled chunk needs to not only contain the values 1 and 2, but know when to produce them
+ * so that they are printed in the right order. Thus, we need an instruction that produces a particular constant.
+ *
+ * When the VM executes a constant instruction, it "loads" the constant for use.
+ * This new instruction is a little more complex than OP_RETURN.
+ * A single bare opcode isn't enough to know which constant to load.
+ *
+ * To handle cases like this, our bytecode, like most others, allows instructions to have operands.
+ * These are stores as binary data immediately after the opcode in the instruction stream
+ * and let us parameterize what the instruction does
+ *
+ * OP_RETURN        OP_CONSTANT
+ * [01] <- opcode   [00][23] <- ([opcode][constant index])
+ * 1 byte           2 bytes
+ *
+ * Each opcode determines how many operand bytes it has and what they mean.
+ * For example, a simple operation like "return" may have no operands, where an instruction for "load local variable"
+ * needs an operand to identify which variable to load. Each time we add a new opcode to cfer, we specify what its operands look like
+ * its instruction format.
+ *
 */
 
 typedef enum {
+    OP_CONSTANT,
     OP_RETURN,
 } OpCode;
 
@@ -40,12 +63,28 @@ typedef enum {
  *  5. Update code to point to the new array.
  *  6. Store the element in hte new array now that there is room
  *  7. Update the count
+ *
+ * Chunks contains almost all the information that the runtime needs from the user's source code.
+ * There's only one piece of data we're missing.
+ *
+ * When a runtime error occurs, we show the user the line number of the offending source code.
+ * In pfer, those number lived in tokens, which we in turn store in the AST nodes.
+ * We need a different solution for cfer now that we've ditched syntax trees in favor of bytecode.
+ * Given any bytecode instruction, we need to be able to determine the line of the user's source program that it was compiled from.
+ *
+ * There are a lot of clever ways we could encode this, we took the absuolute simplest approach.
+ * In the chunk, we store a separate array of integers that parallels the bytecode.
+ * Each number in the array is the line number for the corresponding byte in the bytecode.
+ * When a runtime error occurs, we look up the line number at the same index as the current instruction's offset in the code array.
+ * To implement this, we add another array to Chunk.
  */
 
 typedef struct {
     int count;
     int capacity;
     uint8_t *code;
+    int *lines;
+    ValueArray constants;
 } Chunk;
 
 /*
@@ -60,7 +99,7 @@ void initChunk(Chunk *chunk); // And implement it in chunk.c
  * To append a byte to the end of the chunk, we use a new function
  */
 
-void writeChunk(Chunk *chunk, uint8_t byte);
+void writeChunk(Chunk *chunk, uint8_t byte, int line);
 
 /*
  * We have to manage memory ourselves, and that means freeing it too.
@@ -68,6 +107,13 @@ void writeChunk(Chunk *chunk, uint8_t byte);
 
 void freeChunk(Chunk *chunk);
 
+/*
+ * We define a convenience method to add a new constant to the chunk.
+ * Our compiler could write to the constant array inside Chunk directly,
+ * but it's a little nicer to add an explicit function.
+ */
+
+int addConstant(Chunk *chunk, Value value);
 
 
 
@@ -77,20 +123,4 @@ void freeChunk(Chunk *chunk);
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#endif //FERPROJECT_CHUNK_H
+#endif //CFER_CHUNK_H
