@@ -55,7 +55,7 @@ Value pop() {
  *
  * We do that process for every single instruction, every single time one is executed,
  * so this is the most performance critical part of the entire virtual machine.
- * There are clever techniques to do bytecode dispatch efficientely, but the fastest solutions require either non-standard extensions to C,
+ * There are clever techniques to do bytecode dispatch efficiently, but the fastest solutions require either non-standard extensions to C,
  * or handwritten assembly code. We'll keep it simple for now. Just like our disassembler, we have a single giant switch statement with a case for each opcode.
  * The body of each case implements that opcode's behavior.
  *
@@ -64,6 +64,12 @@ Value pop() {
 static InterpretResult run() {
 #define READ_BYTE() (*vm.ip++)
 #define READ_CONSTANT() (vm.chunk->constants.values[READ_BYTE()])
+#define BINARY_OP(op) \
+    do { \
+        double b = pop(); \
+        double a = pop(); \
+        push (a op b); \
+    } while (false)
     for (;;) {
 #ifdef DEBUG_TRACE_EXECUTION
         printf("          ");
@@ -81,6 +87,14 @@ static InterpretResult run() {
                 push(constant);
                 break;
             }
+            case OP_ADD: BINARY_OP(+); break;
+            case OP_SUBTRACT: BINARY_OP(-); break;
+            case OP_MULTIPLY: BINARY_OP(*); break;
+            case OP_DIVIDE: BINARY_OP(/); break;
+            case OP_NEGATE: {
+                push(-pop());
+                break;
+            }
             case OP_RETURN: {
                 printValue(pop());
                 printf("\n");
@@ -90,6 +104,7 @@ static InterpretResult run() {
     }
 #undef READ_BYTE
 #undef READ_CONSTANT
+#undef BINARY_OP
 }
 
 /*

@@ -18,7 +18,7 @@
 
 /*
  * This typedef abstracts how Fer values are concretely represented in C.
- * That way we cna change that representation without needing to go back and fix existing code
+ * That way we can change that representation without needing to go back and fix existing code
  * that passes around .
  *
  * Back to the question of where to store constants in a chunk.
@@ -31,7 +31,7 @@
  *
  * Most virtual machines do something similar. For example, the Java Virtual Machine associates a constant pool with each compiled class.
  * That sounds good enough for cfer. Each chunk will carry with a list of the values that appear as literals in the program.
- * To keep things simpler, we'll put all constants in there, evne simple integers.
+ * To keep things simpler, we'll put all constants in there, even simple integers.
  */
 
 typedef double Value;

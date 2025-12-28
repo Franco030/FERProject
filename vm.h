@@ -13,20 +13,20 @@
  * We don't use a local variable inside run() for this because eventually other functions will need to access it.
  *
  * Its type is a byte pointer. We use an actual real C pointer right into the middle of the bytecode array
- * instead of something like an integeer index because it's faster to dereference a pointer than look up an element
+ * instead of something like an integer index because it's faster to dereference a pointer than look up an element
  * in an array by index.
  *
  * The name "IP" is traditional, it's an instruction pointer.
  * We initialize ip by pointing it at the first byte of code in the chunk. We haven't executed that instruction yes,
- * so ip points to the instruction about to be executed. This will be true durint the entire time the VM is running:
+ * so ip points to the instruction about to be executed. This will be true during the entire time the VM is running:
  * the IP always points to the next instruction, not the one currently being handled.
  *
  * Our compiled bytecode needs a way to shuttle values around between the different instructions that need them.
  * For example:
  * print 3 - 2;
  * We obviously need instructions for the constants 3 and 2, the print statement, and the substraction.
- * But how does the substracion know that 3 is the minuend and 2 is the subtrahend? How does the print instruction know to print the result of that?
- * The operands to an arithmetic operator obviouly need to be evaluated before we can perform the operation itself.
+ * But how does the substraction know that 3 is the minuend and 2 is the subtrahend? How does the print instruction know to print the result of that?
+ * The operands to an arithmetic operator obviously need to be evaluated before we can perform the operation itself.
  *
  * Since the temporary values we need to track naturally have stack-like behavior,
  * our VM will use a stack to manage them. When it needs to consume one or more values,
@@ -40,7 +40,7 @@
  *         0   1   2   3   4   5
  * bottom [h] [e] [l] [l] [o] [ ] top
  *
- * Since the stack grows and shrinks as values are pushed and popped, we need to track where the top of the stack in in the array.
+ * Since the stack grows and shrinks as values are pushed and popped, we need to track where the top of the stack in the array.
  * As with ip, we use a direct pointer instead of an integer index since it's faster to dereference the pointer than calculate the offset
  * from the index each time we need it.
  *

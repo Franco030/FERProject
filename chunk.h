@@ -35,6 +35,11 @@
 
 typedef enum {
     OP_CONSTANT,
+    OP_ADD,
+    OP_SUBTRACT,
+    OP_MULTIPLY,
+    OP_DIVIDE,
+    OP_NEGATE,
     OP_RETURN,
 } OpCode;
 
@@ -72,7 +77,7 @@ typedef enum {
  * We need a different solution for cfer now that we've ditched syntax trees in favor of bytecode.
  * Given any bytecode instruction, we need to be able to determine the line of the user's source program that it was compiled from.
  *
- * There are a lot of clever ways we could encode this, we took the absuolute simplest approach.
+ * There are a lot of clever ways we could encode this, we took the absolute simplest approach.
  * In the chunk, we store a separate array of integers that parallels the bytecode.
  * Each number in the array is the line number for the corresponding byte in the bytecode.
  * When a runtime error occurs, we look up the line number at the same index as the current instruction's offset in the code array.
@@ -89,7 +94,7 @@ typedef struct {
 
 /*
  * Let's implement the functions to work with the Chunk.
- * C doesn't have constructors, so we declare a function to initalize a new chunk
+ * C doesn't have constructors, so we declare a function to initialize a new chunk
  */
 
 void initChunk(Chunk *chunk); // And implement it in chunk.c
