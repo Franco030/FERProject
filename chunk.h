@@ -31,14 +31,30 @@
  * needs an operand to identify which variable to load. Each time we add a new opcode to cfer, we specify what its operands look like
  * its instruction format.
  *
+ * Something to take into account as a personal note is that we could create instructions for !=, <= and >=, and as how the book says, we should do that.
+ * But it's important to note that bytecode instructions don't need to closely follow the user's source code.
+ * The VM has total freedom to use whatever instruction set and code sequences it wants as long as they have the right user-visible behavior.
+ *
+ * The expression a != b has the same semantics as !(a == b), so the compiler is free to compile the former as if it were the latter.
+ * Instead of a dedicated OP_NOT_EQUAL instruction, it can output an OP_EQUAL followed by an OP_NOT.
+ * Likewise, a <= b is the same as !(a > b) and a >= b is !(a < b). Thus, we only made three new instructions.
+ *
+ * Over in the parser, though, we do have six new operators to slot into the parse table.
 */
 
 typedef enum {
     OP_CONSTANT,
+    OP_NIL,
+    OP_TRUE,
+    OP_FALSE,
+    OP_EQUAL,
+    OP_GREATER,
+    OP_LESS,
     OP_ADD,
     OP_SUBTRACT,
     OP_MULTIPLY,
     OP_DIVIDE,
+    OP_NOT,
     OP_NEGATE,
     OP_RETURN,
 } OpCode;

@@ -5,3 +5,8 @@ That way, the host app can control when and where memory for the VM is allocated
 What we have is similar to singleton pattern, where we use the same instance for every chunk.
 
 We may store ip in a local variable. It gets modified so often during execution that we want the C compiler to keep it in a register
+
+--- Tokens ---
+In pfer, the Token class had a field to store the runtime value converted from the literal token's lexeme.
+Implementing that here, would require some sort of union and a type tag to tell wheter the token contains a string or a double vlaue.
+If it's a string, we'd need to manage the memory for the string's character array somehow.

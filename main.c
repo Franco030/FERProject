@@ -22,7 +22,8 @@ static void repl() {
 }
 
 static char* readFile(const char *path) {
-    FILE *file = fopen(path, "rb");
+    FILE *file = fopen(path, "rb"); // Mode: "rb" (read binary) ensures that the OS doesn't "translate" anything (like '\n' to a line jump)
+                                                  // and it also ensures that ftell, gets the name of all the bytes in the file
     if (file == NULL) {
         fprintf(stderr, "Could not open file \"%s\".\n", path);
         exit(74);
@@ -63,11 +64,12 @@ static void runFile(const char *path) {
 int main(int argc, char *argv[]) {
     initVM();
 
-    if (argc == 1) {
+    if (argc == 1) { // This means the user only typed the name of the program (./cfer) -> we initiate the REPL
         repl();
-    } else if (argc == 2) {
+    } else if (argc == 2) { // This means the user typed something else aside from the name of the program, and we assume it was the filepath to the .fer file
+                            // -> we interpret the file
         runFile(argv[1]);
-    } else {
+    } else { // We only need those 2 arguments, so if we pass more arguments we exit the program with an error
         fprintf(stderr, "Usage: cfer [path]\n");
         exit(64);
     }

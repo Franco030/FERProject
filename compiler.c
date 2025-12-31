@@ -1,9 +1,513 @@
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "common.h"
 #include "compiler.h"
+
+#include "debug.h"
 #include "scanner.h"
 
-void compile(const char *source) {
+#ifdef DEBUG_PRINT_CODE
+#include "debug.h"
+#endif
+
+/*
+ * The current and previous tokens are stored in the following struct.
+ * And like we did in other modules, we have a single global variable of this struct type
+ * so we don't need to pass the state around from function to function in the compiler.
+ */
+
+typedef struct {
+    Token current;
+    Token previous;
+    bool hadError;
+    bool panicMode;
+} Parser;
+
+/*
+ * These are all of Fer's precedence levels in order from lowers to highest. Since C implicitly gives successively larger numbers for enums,
+ * this means that PREC_CALL is numerically biffer than PREC_UNARY. For example,
+ * say the compiler is sitting on a chunk of code like:
+ * -a.b + c
+ * If we call parsePrecedence(PREC_ASSIGNMENT), then it will parse the entire expression because + has higher precedence than the assignment.
+ * If instead we call parsePrecedence(PREC_UNARY), it will compile the -a.b and stop there. It doesn't keep going through the + because the addition has
+ * lower precedence than unary operators.
+ */
+
+typedef enum {
+    PREC_NONE,
+    PREC_ASSIGNMENT,    // =
+    PREC_OR,            // or
+    PREC_AND,           // and
+    PREC_EQUALITY,      // == !=
+    PREC_COMPARISON,    // < > <= >=
+    PREC_TERM,          // + -
+    PREC_FACTOR,        // * /
+    PREC_UNARY,         // ! -
+    PREC_CALL,          // . ()
+    PREC_PRIMARY
+} Precedence;
+
+typedef void (*ParseFn)();
+
+/*
+ * We need a table that, given a token type, lets us find
+ * - the function to compile a prefix expression starting with a token of that type,
+ * - the function to compile an infix expression whose left operand is followed by a token of that type, and
+ * - the precedence of an infix expression that uses that token as an operator.
+ *
+ * We wrap these three properties in a little struct which represents a single row in the parser table.
+ */
+
+typedef struct {
+    ParseFn prefix;
+    ParseFn infix;
+    Precedence precedence;
+} ParseRule;
+
+Parser parser;
+Chunk *compilingChunk;
+
+static Chunk* currentChunk() {
+    return compilingChunk;
+}
+
+/*
+ * Here's where the actual work happens.
+ * First, we print where the error occurred. We try to show the lexeme if it's human-readable.
+ * Then we print the error message itself. After that, we set this hadError flag.
+ * That records whether any errors occurred during compilation.
+ *
+ * We want to avoid error cascades. If the user has a mistake in their code and the parser gets confused about where it is in hte grammar,
+ * we don't want it to spew out a whole pile of meaningless knock-on errors after the first one.
+ *
+ * We actually don't fix that in pfer (:c)
+ *
+ * We add a flag to track whether we're currently in panic mode. When an error occurs, we set it.
+ * After that, we go ahead and keep compiling as normal as if the error never occurred. The bytecode will never get executed,
+ * so it's harmless to keep on compiling. The trick is that while the panic mode flag is set, we simply suppress any other errors that get detected.
+ *
+ * There's a good chance the parser will go off in the weeds, but the user won't know because the errors all get swallowed.
+ * Panic mode ends when the parser reaches a synchronization point. For Fer, we chose statement boundaries, so when we later add those to our compiler,
+ * we'll clear the flag there.
+ */
+
+static void errorAt(Token *token, const char *message) {
+    if (parser.panicMode) return;
+    parser.panicMode = true;
+    fprintf(stderr, "[line %d] Error", token->line);
+
+    if (token->type == TOKEN_EOF) {
+        fprintf(stderr, " at end");
+    } else if (token->type == TOKEN_ERROR) {
+        // Nothing
+    } else {
+        fprintf(stderr, " at '%.*s'", token->length, token->start);
+    }
+
+    fprintf(stderr, ": %s\n", message);
+    parser.hadError = true;
+}
+
+static void error(const char *message) {
+    errorAt(&parser.previous, message);
+}
+
+/*
+ * If the scanner hands us an error token, we need to actually tell the user.
+ * That happens using the following function.
+ *
+ * We pull the location out of the current token in order to tell the user where the error occurred and forward it to errorAt().
+ * More often we'll report an error at the location of the token we just consumed, so we give the shorter name "error" to other function.
+ */
+
+static void errorAtCurrent(const char *message) {
+    errorAt(&parser.current, message);
+}
+
+/*
+ * Just like in pfer, it steps forward through the token stream. It asks the scanner for the next token and stores it for later use.
+ * Before doing that, it takes the old current token and stashes that in a previous field.
+ * That will come in handy later so that we can get at the lexeme after we match a token.
+ *
+ * The code to read the next token is wrapped in a loop. Remember cfer's scanner doesn't report lexical error.
+ * Instead, it creates special error tokens and leaves it up to the parser to report them. We do that here.
+ *
+ * We keep looping, reading tokens and reporting the errors, until we hit a non-error one or reach the end.
+ * That way, the rest of the parser sees only valid tokens
+ */
+
+static void advance() {
+    parser.previous = parser.current;
+
+    for (;;) {
+        parser.current = scanToken();
+        if (parser.current.type != TOKEN_ERROR) break;
+
+        errorAtCurrent(parser.current.start);
+    }
+}
+
+/*
+ * This following function is similar to advance() in that ir reads the next token.
+ * But it also validates that the token has an expected type. If not, it reports an error.
+ * This function is the foundation of most syntax errors in the compiler.
+ */
+
+static void consume(TokenType type, const char *message) {
+    if (parser.current.type == type) {
+        advance();
+        return;
+    }
+
+    errorAtCurrent(message);
+}
+
+/*
+ * After we parse and understand a piece of the user's program, the next step is to translate that to a series of bytecode instructions.
+ * It starts with the easiest possible step: appending a single byte to the chunk.
+ */
+
+static void emitByte(uint8_t byte) {
+    writeChunk(currentChunk(), byte, parser.previous.line);
+}
+
+static void emitBytes(uint8_t byte1, uint8_t byte2) {
+    emitByte(byte1);
+    emitByte(byte2);
+}
+
+static void emitReturn() {
+    emitByte(OP_RETURN);
+}
+
+static uint8_t makeConstant(Value value) {
+    int constant = addConstant(currentChunk(), value);
+    if (constant > UINT8_MAX) {
+        error("Too many constants in one chunk.");
+        return 0;
+    }
+
+    return (uint8_t)constant;
+}
+
+static void emitConstant(Value value) {
+    emitBytes(OP_CONSTANT, makeConstant(value));
+}
+
+static void endCompiler() {
+    emitReturn();
+#ifdef DEBUG_PRINT_CODE
+    if (!parser.hadError) {
+        disassembleChunk(currentChunk(), "code");
+    }
+#endif
+}
+
+static void expression();
+static ParseRule* getRule(TokenType type);
+static void parsePrecedence(Precedence precedence);
+
+/*
+ * Binary operators are different because they are infix. With the other expressions, we know what we are parsing from the very first token.
+ * With infix expressions we don't know we're in the middle of a binary operator until after we've parsed its left operand and then stumbled onto
+ * the operator token in the middle.
+ *
+ * Here's an example:
+ * 1 + 2
+ * Let's walk through trying to compile it with what we know so far:
+ * 1. We call expression(). That in turn calls parsePrecedence(PREC_ASSIGNMENT).
+ * 2. That function sees the leading number token and recognizes it is parsing a number literal. It hands off control to number().
+ * 3. number() creates a constant, emits an OP_CONSTANT, and returns back to parsePrecedence()
+ *
+ * Now what? The call to parsePrecedence() should consume the entire addition expression, so it needs to keep going somehow.
+ * Fortunately, the parser is right where we need it to be. Now that we've compiled the leading number expression, the next token is +.
+ * That's the exact token that parsePrecedence() needs to detect that we're in the middle of an infix expression and to realize that the expression we already
+ * compiled is actually an operand to that.
+ *
+ * So this hypothetical array of function pointers doesn't just list functions to parse expressions that start with a given token.
+ * Instead, it's a table of function pointers. One column associates prefix parser functions with token types.
+ * The second column associates infix parser functions with token types.
+ *
+ * The function we will use as the infix parser for TOKEN_PLUS, TOKEN_MINUS, TOKEN_STAR, and TOKEN_SLASH is the following.
+ *
+ * When a prefix parser function is called, the leading token has already been consumed. An infix parser function is even more in medias res,
+ * the entire left-hand operand expression has already been compiled and the subsequent infix operator consumed.
+ *
+ * The fact that the left operand gets compiled first works out fine. It means at runtime, that code gets executed first.
+ * When it runs, the value it produces will end up on the stack. That's right where the infix operator is going to need it.
+ *
+ * Then we come here to binary() to handle the rest of the arithmetic operators. This function compiles the right operand,
+ * much like how unary() compiles its own trailing operand. Finally, it emits the bytecode instruction that performs the binary operation.
+ *
+ * When run, the VM will execute the left and right operand code, in that order,
+ * leaving their values on the stack. Then it executes the instruction for the operator. That pops the two values, computes the operation,
+ * and pushes the result.
+ *
+ * When we parse the right-hand operand, we again need to worry about precedence. Take an expression like:
+ * 2 * 3 + 4
+ * When we parse the right operand of the * expression, we need to just capture 3, and not 3 + 4, because + is lower precedence than *.
+ * We could define a separate function for each binary operator. Each would call parsePrecedence and pass in the correct precedence level for its operand.
+ *
+ * But that's kind of tedious. Each binary operator's right hand operand precedence is one level higher than its own.
+ * We can look t hat up dynamically with this getRule(). Using that, we call parsePrecedence() with one level higher than this operator's level.
+ *
+ * This way, we can use a single binary() function for all binary operators even though they have different precedences.
+ *
+ *
+ * We use one higher level of precedence for the right operand because the binary operators are left-associative.
+ * Given a series of the same operator, like:
+ * 1 + 2 + 3 + 4
+ * We want to parse it like:
+ * ((1 + 2) + 3) + 4
+ * Thus, when parsing the right-hand operand to the first +, we want to consume the 2, but not the rest, so we use on level above +'s precedence.
+ * But if our operator was right-associative, this would be wrong.
+ * Given:
+ * a = b = c = d
+ * Since assignment is right-associative, we want to parse it as:
+ * a = (b = (c = d))
+ * To enable that, we would call parsePrecedence() with the same precedence as the current operator.
+ * We don't need to track the precedence of the prefix expression starting with a given token because all prefix operators in Fer have the same precedence.
+ */
+
+static void binary() {
+    TokenType operatorType = parser.previous.type;
+    ParseRule *rule = getRule(operatorType);
+    parsePrecedence((Precedence)(rule->precedence + 1));
+
+    switch (operatorType) {
+        case TOKEN_BANG_EQUAL:      emitBytes(OP_EQUAL, OP_NOT); break;
+        case TOKEN_EQUAL_EQUAL:     emitByte(OP_EQUAL); break;
+        case TOKEN_GREATER:         emitByte(OP_GREATER); break;
+        case TOKEN_GREATER_EQUAL:   emitBytes(OP_LESS, OP_NOT); break;
+        case TOKEN_LESS:            emitByte(OP_LESS); break;
+        case TOKEN_LESS_EQUAL:      emitBytes(OP_GREATER, OP_NOT); break;
+        case TOKEN_PLUS:            emitByte(OP_ADD); break;
+        case TOKEN_MINUS:           emitByte(OP_SUBTRACT); break;
+        case TOKEN_STAR:            emitByte(OP_MULTIPLY); break;
+        case TOKEN_SLASH:           emitByte(OP_DIVIDE); break;
+        default: return; // Unreachable
+    }
+}
+
+/*
+ * Since parsePrecedence() has already consumed the keyword token, all we need to do is output the proper instruction.
+ * We figure that out based on the type of token we parsed.
+ */
+
+static void literal() {
+    switch (parser.previous.type) {
+        case TOKEN_FALSE: emitByte(OP_FALSE); break;
+        case TOKEN_NIL: emitByte(OP_NIL); break;
+        case TOKEN_TRUE: emitByte(OP_TRUE); break;
+        default: return; // Unreachable
+    }
+}
+
+/*
+ * Many expressions start with a particular token. We call these prefix expressions. For example,
+ * when we're parsing an expression and the current token is (, we know we must be looking at a parenthesized grouping expression.
+ *
+ * It turns out our function pointer array handles those too. The parsing function for an expression type can consume any additional tokens that it wants to,
+ * just like in a regular recursive descent parser.
+ *
+ * Again, we assume the initial ( has already been consumed. We recursively call back into expression() to compile the expression between the parentheses,
+ * then parse the closing ) at the end.
+ */
+
+static void grouping() {
+    expression();
+    consume(TOKEN_RIGHT_PAREN, "Expect ')' after expression.");
+}
+
+/*
+ * To compile number literals, we store a pointer to the following function at the TOKEN_NUMBER index in the array.
+ * We assume the token for the number literal has already been consumed and is stored in previous. We take that lexeme and use the C standard library
+ * to convert it to a double value. Then we generate the code to load that value using emitConstant().
+ */
+
+static void number() {
+    double value = strtod(parser.previous.start, NULL);
+    emitConstant(NUMBER_VAL(value));
+}
+
+/*
+ * The leading - token has been consumed and is sitting in parser.previous.
+ * We grab the token type form that to note which unary operator we're dealing with. It's unnecessary right now, but this will make more sense when we
+ * use this same function to compile the ! operator.
+ *
+ * As in grouping(), we recursively call expression() to compile the operand. After that,
+ * we emit the bytecode to perform the negation. It might seem a little weird to write the negate function after its operand's bytecode
+ * since the - appears on the left, but think about it in order of execution:
+ * 1. We evaluate the operand first which leaves its value on the stack.
+ * 2. Then we pop that value to negate it and push the result.
+ *
+ * So the OP_NEGATE instruction should be emitted last. This is part of the compiler's job, parsing the program in the order it appears in the source code
+ * and rearranging it into the order that execution happens.
+ *
+ * There is one problem with this code, though. The expression() function it calls will parse any expression for the operand regardless of precedence.
+ * Once we add binary operators and other syntax, that will do the wrong thing. Consider:
+ * -a.b + c;
+ * Here the operand to - should be just the a.b expression, not the entire a.b + c. But if unary() calls expression(),
+ * the latter will happily chew through
+ * all the remaining code including the +. It will erroneously treat the - as lower precedence than the +.
+ *
+ * When parsing the operand to unary -, we need to compile only expressions at a certain precedence level or higher.
+ */
+
+static void unary() {
+    TokenType operatorType = parser.previous.type;
+
+    parsePrecedence(PREC_UNARY);
+
+    switch (operatorType) {
+        case TOKEN_BANG: emitByte(OP_NOT); break;
+        case TOKEN_MINUS: emitByte(OP_NEGATE); break;
+        default: return; // Unreachable
+    }
+}
+
+/*
+ * We can see how grouping, and unary are slotted into the prefix parser column for their respective token types.
+ * In the next column, binary is wired up to the four arithmetic infix operators. Those infix operators also have their precedences set in the last column.
+ *
+ * Aside from those, the rest of the table is full of NULL and PREC_NONE.
+ * Most of those empty cells are because there is no expression associated with those tokens. You can't start an expression with,
+ * say, else, and } would make for a pretty confusing infix operator.
+ *
+ * But, also, we haven't filled in the entire grammar yet. As we add new expression types, some of these slots will get functions in them.
+ *
+ * Now that we have the table, we are finally ready to write the code that uses it. This is where Pratt parser comes to life.
+ */
+
+ParseRule rules[] = {
+    [TOKEN_LEFT_PAREN]      = {grouping, NULL,          PREC_NONE},
+    [TOKEN_RIGHT_PAREN]     = {NULL,     NULL,          PREC_NONE},
+    [TOKEN_LEFT_BRACE]      = {NULL,     NULL,          PREC_NONE},
+    [TOKEN_RIGHT_BRACE]     = {NULL,     NULL,          PREC_NONE},
+    [TOKEN_COMMA]           = {NULL,     NULL,          PREC_NONE},
+    [TOKEN_DOT]             = {NULL,     NULL,          PREC_NONE},
+    [TOKEN_MINUS]           = {unary,    binary,        PREC_TERM},
+    [TOKEN_PLUS]            = {NULL,     binary,        PREC_TERM},
+    [TOKEN_SEMICOLON]       = {NULL,     NULL,          PREC_NONE},
+    [TOKEN_SLASH]           = {NULL,     binary,        PREC_FACTOR},
+    [TOKEN_STAR]            = {NULL,     binary,        PREC_FACTOR},
+    [TOKEN_BANG]            = {unary,     NULL,         PREC_NONE},
+    [TOKEN_BANG_EQUAL]      = {NULL,     binary,        PREC_EQUALITY},
+    [TOKEN_EQUAL]           = {NULL,     NULL,          PREC_NONE},
+    [TOKEN_EQUAL_EQUAL]     = {NULL,     binary,        PREC_EQUALITY},
+    [TOKEN_GREATER]         = {NULL,     binary,        PREC_COMPARISON},
+    [TOKEN_GREATER_EQUAL]   = {NULL,     binary,        PREC_COMPARISON},
+    [TOKEN_LESS]            = {NULL,     binary,        PREC_COMPARISON},
+    [TOKEN_LESS_EQUAL]      = {NULL,     binary,        PREC_COMPARISON},
+    [TOKEN_IDENTIFIER]      = {NULL,     NULL,          PREC_NONE},
+    [TOKEN_STRING]          = {NULL,     NULL,          PREC_NONE},
+    [TOKEN_NUMBER]          = {number,   NULL,          PREC_NONE},
+    [TOKEN_AND]             = {NULL,     NULL,          PREC_NONE},
+    [TOKEN_CLASS]           = {NULL,     NULL,          PREC_NONE},
+    [TOKEN_ELSE]            = {NULL,     NULL,          PREC_NONE},
+    [TOKEN_FALSE]           = {literal,  NULL,          PREC_NONE},
+    [TOKEN_FOR]             = {NULL,     NULL,          PREC_NONE},
+    [TOKEN_FUN]             = {NULL,     NULL,          PREC_NONE},
+    [TOKEN_IF]              = {NULL,     NULL,          PREC_NONE},
+    [TOKEN_NIL]             = {literal,  NULL,          PREC_NONE},
+    [TOKEN_OR]              = {NULL,     NULL,          PREC_NONE},
+    [TOKEN_PRINT]           = {NULL,     NULL,          PREC_NONE},
+    [TOKEN_RETURN]          = {NULL,     NULL,          PREC_NONE},
+    [TOKEN_SUPER]           = {NULL,     NULL,          PREC_NONE},
+    [TOKEN_THIS]            = {NULL,     NULL,          PREC_NONE},
+    [TOKEN_TRUE]            = {literal,  NULL,          PREC_NONE},
+    [TOKEN_VAR]             = {NULL,     NULL,          PREC_NONE},
+    [TOKEN_WHILE]           = {NULL,     NULL,          PREC_NONE},
+    [TOKEN_ERROR]           = {NULL,     NULL,          PREC_NONE},
+    [TOKEN_EOF]             = {NULL,     NULL,          PREC_NONE},
+};
+
+/*
+ * This function starts at the current token and parses any expression at the given precedence level or higher.
+ * It will use the table of parsing function pointers.
+ *
+ * At the beginning of parsePrecedence(), we look up a prefix parser for the current token.
+ * The first token is always going to belong to some kind of prefix expression, by definition (Look at expression).
+ * It may turn out to be nested as an operand inside one or more infix expressions, but as you read the code from left to right,
+ * the first token you hit always belongs to a prefix expression.
+ *
+ * After parsing that, which may consume more tokens, the prefix expression is done.
+ * Now we look for an infix parser for the next token. If we find one,
+ * it means the prefix expression we already compiled might be an operand for it.
+ * Byt only if the call to parsePrecedence() has a precedence that is low enough to permit that infix operator.
+ *
+ * If the next token is too low precedence, or isn't an infix operator at all, we're done.
+ * We've parsed as much expression as we can. Otherwise, we consume the operator and hand off control to the infix parser we found.
+ * It consumes whatever other tokens it needs (usually the right operand) and returns back to parsePrecedence().
+ * Then we loop back around and see if the next token is also a valid infix operator that can take the entire preceding expression as its operand.
+ * We keep looping like that, crunching through infix operators and their operands until we hit a token that isn't an infix operator or is too low
+ * precedence and stop.
+ *
+ */
+
+static void parsePrecedence(Precedence precedence) {
+    advance();
+    ParseFn prefixRule = getRule(parser.previous.type)->prefix;
+    if (prefixRule == NULL) {
+        error("Expect expression.");
+        return;
+    }
+
+    prefixRule();
+
+    while (precedence <= getRule(parser.current.type)->precedence) {
+        advance();
+        ParseFn infixRule = getRule(parser.previous.type)->infix;
+        infixRule();
+    }
+}
+
+/*
+ * The following function simply returns the rule at the given index.
+ * It's called by binary() to look up the precedence of the current operator.
+ * This functions exists solely to handle a declaration cycle in the C code.
+ * binary() is defined before the rules table so that the table can store a pointer to it.
+ * That means the body of binary() cannot access the table directly.
+ *
+ * Instead, we wrap the lookup in a function. That lets us forward declare getRule() before the definition of binary(),
+ * and then define getRule() after the table.
+ */
+
+static ParseRule* getRule(TokenType type) {
+    return &rules[type];
+}
+
+/*
+ * We map each token type to a different kind of expression.
+ * We define a function for each expression that outputs the appropriate bytecode.
+ * Then we build an array of function pointers. The indexes in the array correspond to the TokenType enum values,
+ * and the function at each index is the code to compile an expression of that token type.
+ */
+
+static void expression() {
+    parsePrecedence(PREC_ASSIGNMENT);
+}
+
+
+/*
+ * In pfer, when the code ran, the scanner raced ahead and eagerly scanned the whole program, returning a list of tokens.
+ * This would be a challenge here. We'd need some sort of growable array or list to store the tokens in.
+ * We'd need to manage allocating and freeing the tokens, and the collection itself.
+ *
+ * At any point in time, the compiler needs only one or two tokens, we don't need to keep them all around at the same time.
+ * Instead, the simplest solution is to not scan a token until the compiler needs one. When te scanner provides one,
+ * it returns the token by value. It doesn't need to dynamically allocate anything, it can just pass tokens around on the C stack.
+ */
+
+bool compile(const char *source, Chunk *chunk) {
     initScanner(source);
+    compilingChunk = chunk;
+    parser.hadError = false;
+    parser.panicMode = false;
+    advance();
+    expression();
+    consume(TOKEN_EOF, "Expect end of expression.");
+    endCompiler();
+    return !parser.hadError;
 }

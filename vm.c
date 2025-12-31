@@ -1,3 +1,4 @@
+#include <stdarg.h>
 #include <stdio.h>
 
 #include "common.h"
@@ -13,6 +14,34 @@ VM vm;
 
 static void resetStack() {
     vm.stackTop = vm.stack;
+}
+
+/*
+ * Variadic function can take a varying number of arguments.
+ * Callers can pass a format string to runtimeError() followed by a number of arguments,
+ * just like they can when calling printf() directly.
+ * runtimeError() then formats and prints those arguments.
+ *
+ * After we show the error message, we tell the user which line of their code was being executed when the error occurred.
+ * Since we left the tokens behind in the compiler, we look up the line in the debug information compiled into the chunk.
+ * If our compiler did its job right, that corresponds to the line of source code that the bytecode was compiled from.
+ *
+ * We look into the chunk's debug line array using the current bytecode instruction index minus one. That's because the interpreter
+ * advances past each instruction before executing it. So, at the point we call runtimeError(),
+ * the failed instruction is the previous one.
+ */
+
+static void runtimeError(const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    vfprintf(stderr, format, args);
+    va_end(args);
+    fputs("\n", stderr);
+
+    size_t instruction = vm.ip - vm.chunk->code - 1;
+    int line = vm.chunk->lines[instruction];
+    fprintf(stderr, "[line %d] in script\n", line);
+    resetStack();
 }
 
 void initVM() {
@@ -31,6 +60,26 @@ void push(Value value) {
 Value pop() {
     vm.stackTop--;
     return *vm.stackTop;
+}
+
+/*
+ * The following function returns a Value from the stack but doesn't pop it.
+ * The distance argument is how far down from the top of the stack to look: zero is the top, one is one slot down, etc.
+ * It's important to remember that the stackTop pointer is pointing where the next value is going to be (e.g., [1] >[]<).
+ */
+
+static Value peek(int distance) {
+    return vm.stackTop[-1 - distance];
+}
+
+/*
+ * For unary minus, we made it an error to negate anything that isn't a number.
+ * But Fer, like most scripting languages, is more permissive when it comes to ! and other contexts where a Boolean is exprected.
+ * The rule for how other types are handled is called "falsiness", and we implement it here:
+ */
+
+static bool isFalsey(Value value) {
+    return IS_NIL(value) || (IS_BOOL(value) && !AS_BOOL(value));
 }
 
 /*
@@ -65,11 +114,14 @@ Value pop() {
 static InterpretResult run() {
 #define READ_BYTE() (*vm.ip++)
 #define READ_CONSTANT() (vm.chunk->constants.values[READ_BYTE()])
-#define BINARY_OP(op) \
+#define BINARY_OP(valueType, op) \
     do { \
-        double b = pop(); \
-        double a = pop(); \
-        push (a op b); \
+        if (!IS_NUMBER(peek(0)) || !IS_NUMBER(peek(1))) { \
+            runtimeError("Operands must be numbers."); \
+        } \
+        double b = AS_NUMBER(pop()); \
+        double a = AS_NUMBER(pop()); \
+        push(valueType(a op b)); \
     } while (false)
     for (;;) {
 #ifdef DEBUG_TRACE_EXECUTION
@@ -88,12 +140,30 @@ static InterpretResult run() {
                 push(constant);
                 break;
             }
-            case OP_ADD: BINARY_OP(+); break;
-            case OP_SUBTRACT: BINARY_OP(-); break;
-            case OP_MULTIPLY: BINARY_OP(*); break;
-            case OP_DIVIDE: BINARY_OP(/); break;
+            case OP_NIL: push(NIL_VAL); break;
+            case OP_TRUE: push(BOOL_VAL(true)); break;
+            case OP_FALSE: push(BOOL_VAL(false)); break;
+            case OP_EQUAL: {
+                Value b = pop();
+                Value a = pop();
+                push(BOOL_VAL(valuesEqual(a, b)));
+                break;
+            }
+            case OP_GREATER: BINARY_OP(BOOL_VAL, >); break;
+            case OP_LESS: BINARY_OP(BOOL_VAL, <); break;
+            case OP_ADD: BINARY_OP(NUMBER_VAL, +); break;
+            case OP_SUBTRACT: BINARY_OP(NUMBER_VAL, -); break;
+            case OP_MULTIPLY: BINARY_OP(NUMBER_VAL, *); break;
+            case OP_DIVIDE: BINARY_OP(NUMBER_VAL, /); break;
+            case OP_NOT:
+                push(BOOL_VAL(isFalsey(pop())));
+                break;
             case OP_NEGATE: {
-                push(-pop());
+                if (!IS_NUMBER(peek(0))) {
+                    runtimeError("Operand must be a number.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                push(NUMBER_VAL(-AS_NUMBER(pop())));
                 break;
             }
             case OP_RETURN: {
@@ -116,9 +186,28 @@ static InterpretResult run() {
  * As the VM works its way through the bytecode, it keeps track of where it is,
  * the location of the instruction currently being executed.
  * We don't use a local variable inside run() for this because eventually other functions will need to access it.
+ *
+ * We create a new empty chunk and pass it over to the compiler. The compiler will take the user's program and fill up the chunk with bytecode.
+ * That's what it will do if the program doesn't have any compile errors. If it does encounter an error,
+ * compile() returns false and we discard the unusable chunk.
+ *
+ * Otherwise, we send the completed chunk over to the VM to be executed. When te VM finishes, we free the chunk and we're done.
  */
 
 InterpretResult interpret(const char *source) {
-    compile(source);
-    return INTERPRET_OK;
+    Chunk chunk;
+    initChunk(&chunk);
+
+    if (!compile(source, &chunk)) {
+        freeChunk(&chunk);
+        return INTERPRET_COMPILE_ERROR;
+    }
+
+    vm.chunk = &chunk;
+    vm.ip = vm.chunk->code;
+
+    InterpretResult result = run();
+
+    freeChunk(&chunk);
+    return result;
 }
