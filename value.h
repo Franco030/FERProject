@@ -36,7 +36,7 @@
  */
 
 typedef struct Obj Obj;
-
+typedef struct ObjString ObjString;
 
 /*
  * 1. How do we represent the type of a value? If you try to, say, multiply a number by true, we need to detect that error at runtime and report it.
