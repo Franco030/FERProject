@@ -2,6 +2,16 @@
 #define CFER_MEMORY_H
 
 #include "common.h"
+#include "object.h"
+
+/*
+ * The following macro, allocates an array with a given element type and count.
+ */
+
+#define ALLOCATE(type, count) \
+    (type*)reallocate(NULL, 0, sizeof(type) * (count))
+
+#define FREE(type, pointer) reallocate(pointer, sizeof(type), 0)
 
 /*
  * This macro calculates a new capacity based on a given current capacity.
@@ -57,5 +67,6 @@
     reallocate(pointer, sizeof(type)*(oldCount), 0)
 
 void* reallocate(void *pointer, size_t oldSize, size_t newSize);
+void freeObjects();
 
 #endif //CFER_MEMORY_H

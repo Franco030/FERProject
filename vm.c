@@ -1,9 +1,12 @@
 #include <stdarg.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "common.h"
 #include "compiler.h"
 #include "debug.h"
+#include "object.h"
+#include "memory.h"
 #include "vm.h"
 
 #include <stdio.h>
@@ -46,10 +49,15 @@ static void runtimeError(const char *format, ...) {
 
 void initVM() {
     resetStack();
+    vm.objects = NULL;
+    initTable(&vm.globals);
+    initTable(&vm.strings);
 }
 
 void freeVM() {
-
+    freeTable(&vm.globals);
+    freeTable(&vm.strings);
+    freeObjects();
 }
 
 void push(Value value) {
@@ -83,6 +91,25 @@ static bool isFalsey(Value value) {
 }
 
 /*
+ * First, we calculate the length of the result string based on the lengths of the operands.
+ * We allocates a character array for the result and then copy the two halves in.
+ */
+
+static void concatenate() {
+    ObjString *b = AS_STRING(pop());
+    ObjString *a = AS_STRING(pop());
+
+    int length = a->length + b->length;
+    char *chars = ALLOCATE(char, length + 1);
+    memcpy(chars, a->chars, a->length);
+    memcpy(chars + a->length, b->chars, b->length);
+    chars[length] = '\0';
+
+    ObjString *result = takeString(chars, length);
+    push(OBJ_VAL(result));
+}
+
+/*
  * This is the single most important function in all of cfer, by far.
  * When te interpreter executes a user's program, it will spend something like 90% of its time inside run().
  * It is the beating heart of the VM.
@@ -111,9 +138,26 @@ static bool isFalsey(Value value) {
  *
  */
 
+/*
+ * Note that we don't always push values after executing a bytecode. This is a key difference between expressions and statements in the VM.
+ * Every bytecode instruction has a stack effect that describes how the instruction modifies the stack.
+ * For example, OP_ADD pops two vlaues and pushes one, leaving the stack one element smaller than before.
+ *
+ * You can sum the stack effects of a series of instructions to get their total effect.
+ * When you add the stack effects of the series of instructions compiled from any complete expression, it will total one.
+ * Each expression leaves one result value on the stack.
+ *
+ * The bytecode for an entire statement has a total stack effect of zero.
+ * Since statement produces no values, it ultimately leaves the stack unchanged,
+ * though it of course uses the stack while it's doing its thing.
+ * This is important because when we get to control flow and looping, a program might execute a long series of statements.
+ * If each statement grew of shrank the stack, it might eventually overflow or underflow.
+ */
+
 static InterpretResult run() {
 #define READ_BYTE() (*vm.ip++)
 #define READ_CONSTANT() (vm.chunk->constants.values[READ_BYTE()])
+#define READ_STRING() AS_STRING(READ_CONSTANT())
 #define BINARY_OP(valueType, op) \
     do { \
         if (!IS_NUMBER(peek(0)) || !IS_NUMBER(peek(1))) { \
@@ -143,6 +187,32 @@ static InterpretResult run() {
             case OP_NIL: push(NIL_VAL); break;
             case OP_TRUE: push(BOOL_VAL(true)); break;
             case OP_FALSE: push(BOOL_VAL(false)); break;
+            case OP_POP: pop(); break;
+            case OP_GET_GLOBAL: {
+                ObjString *name = READ_STRING();
+                Value value;
+                if (!tableGet(&vm.globals, name, &value)) {
+                    runtimeError("Undefined variable '%s'.", name->chars);
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                push(value);
+                break;
+            }
+            case OP_DEFINE_GLOBAL: {
+                ObjString *name = READ_STRING();
+                tableSet(&vm.globals, name, peek(0));
+                pop();
+                break;
+            }
+            case OP_SET_GLOBAL: {
+                ObjString *name = READ_STRING();
+                if (tableSet(&vm.globals, name, peek(0))) {
+                    tableDelete(&vm.globals, name);
+                    runtimeError("Undefined variable '%s'.", name->chars);
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                break;
+            }
             case OP_EQUAL: {
                 Value b = pop();
                 Value a = pop();
@@ -151,7 +221,19 @@ static InterpretResult run() {
             }
             case OP_GREATER: BINARY_OP(BOOL_VAL, >); break;
             case OP_LESS: BINARY_OP(BOOL_VAL, <); break;
-            case OP_ADD: BINARY_OP(NUMBER_VAL, +); break;
+            case OP_ADD: {
+                if (IS_STRING(peek(0)) && IS_STRING(peek(1))) {
+                    concatenate();
+                } else if (IS_NUMBER(peek(0)) && IS_NUMBER(peek(1))) {
+                    double b = AS_NUMBER(pop());
+                    double a = AS_NUMBER(pop());
+                    push(NUMBER_VAL(b + a));
+                } else {
+                    runtimeError("Operands must be two numbers or two strings");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                break;
+            }
             case OP_SUBTRACT: BINARY_OP(NUMBER_VAL, -); break;
             case OP_MULTIPLY: BINARY_OP(NUMBER_VAL, *); break;
             case OP_DIVIDE: BINARY_OP(NUMBER_VAL, /); break;
@@ -166,15 +248,20 @@ static InterpretResult run() {
                 push(NUMBER_VAL(-AS_NUMBER(pop())));
                 break;
             }
-            case OP_RETURN: {
+            case OP_PRINT: {
                 printValue(pop());
                 printf("\n");
+                break;
+            }
+            case OP_RETURN: {
+                // Exit interpreter
                 return INTERPRET_OK;
             }
         }
     }
 #undef READ_BYTE
 #undef READ_CONSTANT
+#undef READ_STRING
 #undef BINARY_OP
 }
 

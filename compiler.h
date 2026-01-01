@@ -1,6 +1,7 @@
 #ifndef CFER_COMPILER_H
 #define CFER_COMPILER_H
 
+#include "object.h"
 #include "vm.h"
 
 /*

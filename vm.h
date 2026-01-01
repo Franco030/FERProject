@@ -2,6 +2,7 @@
 #define CFER_VM_H
 
 #include "chunk.h"
+#include "table.h"
 #include "value.h"
 
 /*
@@ -70,6 +71,9 @@ typedef struct {
     uint8_t *ip;
     Value stack[STACK_MAX];
     Value *stackTop;
+    Table globals;
+    Table strings;
+    Obj *objects;
 } VM;
 
 /*
@@ -83,6 +87,8 @@ typedef enum {
     INTERPRET_COMPILE_ERROR,
     INTERPRET_RUNTIME_ERROR
 } InterpretResult;
+
+extern VM vm;
 
 /*
  * Like we do with most of the data structures we create,

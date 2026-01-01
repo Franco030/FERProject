@@ -41,7 +41,7 @@ static int constantInstruction(const char *name, Chunk *chunk, int offset) {
     printValue(chunk->constants.values[constant]);
     printf("\n");
     return offset + 2; // Remember that disassembleInstruction() also returns a number to tell the caller the offset of the beginning of the next instruction.
-                       // Where OP_RETURN was only a single byte, OP_CONSTANT iw two, one for the opcode and one for the operand.
+                       // Where OP_RETURN was only a single byte, OP_CONSTANT is two, one for the opcode and one for the operand.
 }
 
 /*
@@ -73,6 +73,14 @@ int disassembleInstruction(Chunk *chunk, int offset) {
             return simpleInstruction("OP_TRUE", offset);
         case OP_FALSE:
             return simpleInstruction("OP_FALSE", offset);
+        case OP_POP:
+            return simpleInstruction("OP_POP", offset);
+        case OP_GET_GLOBAL:
+            return constantInstruction("OP_GET_GLOBAL", chunk, offset);
+        case OP_DEFINE_GLOBAL:
+            return constantInstruction("OP_DEFINE_GLOBAL", chunk, offset);
+        case OP_SET_GLOBAL:
+            return constantInstruction("OP_SET_GLOBAL", chunk, offset);
         case OP_EQUAL:
             return simpleInstruction("OP_EQUAL", offset);
         case OP_GREATER:
@@ -91,6 +99,8 @@ int disassembleInstruction(Chunk *chunk, int offset) {
             return simpleInstruction("OP_NOT", offset);
         case OP_NEGATE:
             return simpleInstruction("OP_NEGATE", offset);
+        case OP_PRINT:
+            return simpleInstruction("OP_PRINT", offset);
         case OP_RETURN:
             return simpleInstruction("OP_RETURN", offset);
         default:
