@@ -8,9 +8,16 @@ We may store ip in a local variable. It gets modified so often during execution 
 
 --- Tokens ---
 In pfer, the Token class had a field to store the runtime value converted from the literal token's lexeme.
-Implementing that here, would require some sort of union and a type tag to tell wheter the token contains a string or a double vlaue.
+Implementing that here, would require some sort of union and a type tag to tell whether the token contains a string or a double value.
 If it's a string, we'd need to manage the memory for the string's character array somehow.
 
 --- Strings ---
 Add escape characters?
 Add access to individual characters, the string's length, changing case, splitting, joining, searching...
+
+--- Variables ---
+Many languages make a distinction between variables that can be reassigned and those that can't. In Java is final,
+in JavaScript is const.
+
+For Fer is going to be "perm". Yet to be added.
+Extend cfer to allow more than 256 local variables to be in scope at a time.
