@@ -22,5 +22,16 @@ in JavaScript is const.
 For Fer is going to be "perm". Yet to be added.
 Extend cfer to allow more than 256 local variables to be in scope at a time.
 
---- Ifs ---
+--- Conditionals ---
 Maybe add conditional expressions like ?:
+Maybe add switch statements?
+
+The grammar should be:
+
+switchStmt     → "switch" "(" expression ")"
+                 "{" switchCase* defaultCase? "}" ;
+switchCase     → "option" expression ":" statement* ;
+defaultCase    → "default" ":" statement* ;
+
+--- loops ---
+Add break; and continue; Both should be jumps I think.
