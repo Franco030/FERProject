@@ -21,3 +21,6 @@ in JavaScript is const.
 
 For Fer is going to be "perm". Yet to be added.
 Extend cfer to allow more than 256 local variables to be in scope at a time.
+
+--- Ifs ---
+Maybe add conditional expressions like ?:
