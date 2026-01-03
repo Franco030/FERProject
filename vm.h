@@ -1,7 +1,7 @@
 #ifndef CFER_VM_H
 #define CFER_VM_H
 
-#include "chunk.h"
+#include "object.h"
 #include "table.h"
 #include "value.h"
 
@@ -64,11 +64,32 @@
  * We could grow the stack dynamically as needed, but for now, we'll keep it simple.
  */
 
-#define STACK_MAX 256
+#define FRAMES_MAX 64
+#define STACK_MAX (FRAMES_MAX * UINT8_COUNT)
+
+/*
+ * A CallFrame represents a single ongoing function call.
+ * The slots field points into the VM's value stack at the first slot that this function can use.
+ * Instead of storing the return address in the callee's frame, the caller stores its own ip.
+ * When we return from a function, the vm will jump to the ip of the caller's CallFrame and resume from there
+ *
+ * Each time a function is called, we create one of these struct.
+ * We could dynamically allocate them on the heap, but that's slow.
+ * Function calls are a core operation, so they need to be as fast as possible.
+ * Fortunately, we can make the same observation we made for variables:
+ * function calls have stack semantics.
+ * If first() calls second(), the call to second() will complete before first() does.
+ */
 
 typedef struct {
-    Chunk *chunk;
+    ObjFunction *function;
     uint8_t *ip;
+    Value *slots;
+} CallFrame;
+
+typedef struct {
+    CallFrame frames[FRAMES_MAX];
+    int frameCount;
     Value stack[STACK_MAX];
     Value *stackTop;
     Table globals;

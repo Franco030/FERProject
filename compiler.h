@@ -19,6 +19,6 @@
  * matching expected token types, etc. And it also has functions for code gen, emitting bytecode, and adding constants to the destination chunk.
  */
 
-bool compile(const char *source, Chunk *chunk);
+ObjFunction* compile(const char *source);
 
 #endif //CFER_COMPILER_H
