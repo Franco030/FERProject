@@ -20,5 +20,6 @@
  */
 
 ObjFunction* compile(const char *source);
+void markCompilerRoots();
 
 #endif //CFER_COMPILER_H
