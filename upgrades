@@ -14,6 +14,7 @@ If it's a string, we'd need to manage the memory for the string's character arra
 --- Strings ---
 Add escape characters?
 Add access to individual characters, the string's length, changing case, splitting, joining, searching...
+When printing, we can't use print number + string; because OP_ADD doesn't accept different types, converting that number to string in runtime is a must...
 
 --- Variables ---
 Many languages make a distinction between variables that can be reassigned and those that can't. In Java is final,
