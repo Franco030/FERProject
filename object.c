@@ -141,14 +141,51 @@ ObjString* takeString(char *chars, int length) {
  */
 
 ObjString* copyString(const char *chars, int length) {
-    uint32_t hash = hashString(chars, length);
-    ObjString *interned = tableFindString(&vm.strings, chars, length, hash);
-    if (interned != NULL) return interned;
-
     char *heapChars = ALLOCATE(char, length + 1);
-    memcpy(heapChars, chars, length);
-    heapChars[length] = '\0';
-    return allocateString(heapChars, length, hash);
+    int newLength = 0;
+
+    for (int i = 0; i < length; i++) {
+        if (chars[i] == '\\' && i + 1 < length) {
+            switch (chars[i + 1]) {
+                case 'n':
+                    heapChars[newLength++] = '\n';
+                    i++;
+                    break;
+                case 'r':
+                    heapChars[newLength++] = '\r';
+                    i++;
+                    break;
+                case 't':
+                    heapChars[newLength++] = '\t';
+                    i++;
+                    break;
+                case '"':
+                    heapChars[newLength++] = '"';
+                    i++;
+                    break;
+                case '\\':
+                    heapChars[newLength++] = '\\';
+                    i++;
+                    break;
+                default:
+                    heapChars[newLength++] = chars[i];
+                    break;
+            }
+        } else {
+            heapChars[newLength++] = chars[i];
+        }
+    }
+
+    heapChars[newLength] = '\0';
+
+    uint32_t hash = hashString(heapChars, newLength);
+    ObjString *interned = tableFindString(&vm.strings, heapChars, newLength, hash);
+    if (interned != NULL) {
+        FREE_ARRAY(char, heapChars, length + 1);
+        return interned;
+    }
+
+    return allocateString(heapChars, newLength, hash);
 }
 
 ObjUpvalue* newUpvalue(Value *slot) {

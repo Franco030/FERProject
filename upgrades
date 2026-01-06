@@ -1,27 +1,6 @@
---- VM ---
-The choice to have a static VM instance is not necessarily a sound engineering choice for a real language implementation.
-It gives the host more flexibility if we do explicitly take a VM pointer and pass it around.
-That way, the host app can control when and where memory for the VM is allocated, run multiple VMs in parallel, etc.
-What we have is similar to singleton pattern, where we use the same instance for every chunk.
-
-We may store ip in a local variable. It gets modified so often during execution that we want the C compiler to keep it in a register
-
---- Tokens ---
-In pfer, the Token class had a field to store the runtime value converted from the literal token's lexeme.
-Implementing that here, would require some sort of union and a type tag to tell whether the token contains a string or a double value.
-If it's a string, we'd need to manage the memory for the string's character array somehow.
-
 --- Strings ---
 Add escape characters?
 Add access to individual characters, the string's length, changing case, splitting, joining, searching...
-When printing, we can't use print number + string; because OP_ADD doesn't accept different types, converting that number to string in runtime is a must...
-
---- Variables ---
-Many languages make a distinction between variables that can be reassigned and those that can't. In Java is final,
-in JavaScript is const.
-
-For Fer is going to be "perm". Yet to be added.
-Extend cfer to allow more than 256 local variables to be in scope at a time.
 
 --- Conditionals ---
 Maybe add conditional expressions like ?:

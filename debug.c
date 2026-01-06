@@ -23,6 +23,30 @@ void disassembleChunk(Chunk *chunk, const char *name) {
     }
 }
 
+static void printScriptString(ObjString *string) {
+    printf("\"");
+    for (int i = 0; i < string->length; i++) {
+        char c = string->chars[i];
+        switch (c) {
+            case '\n': printf("\\n"); break;
+            case '\r': printf("\\r"); break;
+            case '\t': printf("\\t"); break;
+            case '\\': printf("\\\\"); break;
+            case '"':  printf("\\\""); break;
+            default:   printf("%c", c); break;
+        }
+    }
+    printf("\"");
+}
+
+void printValueDebug(Value value) {
+    if (IS_STRING(value)) {
+        printScriptString(AS_STRING(value));
+    } else {
+        printValue(value);
+    }
+}
+
 /*
  * For the one instruction we do have, OP_RETURN, the display function is here.
  * A static function can only be called by other function within the same source file.
@@ -52,8 +76,15 @@ static int jumpInstruction(const char *name, int sign, Chunk *chunk, int offset)
 static int constantInstruction(const char *name, Chunk *chunk, int offset) {
     uint8_t constant = chunk->code[offset + 1];
     printf("%-16s %4d '", name, constant);
-    printValue(chunk->constants.values[constant]);
-    printf("\n");
+
+    Value value = chunk->constants.values[constant];
+    if (IS_STRING(value)) {
+        printScriptString(AS_STRING(value));
+    } else {
+        printValue(value);
+    }
+
+    printf("'\n");
     return offset + 2; // Remember that disassembleInstruction() also returns a number to tell the caller the offset of the beginning of the next instruction.
                        // Where OP_RETURN was only a single byte, OP_CONSTANT is two, one for the opcode and one for the operand.
 }
@@ -62,10 +93,18 @@ static int invokeInstruction(const char *name, Chunk *chunk, int offset) {
     uint8_t constant = chunk->code[offset + 1];
     uint8_t argCount = chunk->code[offset + 2];
     printf("%-16s (%d args) %4d '", name, argCount, constant);
-    printValue(chunk->constants.values[constant]);
+
+    Value value = chunk->constants.values[constant];
+    if (IS_STRING(value)) {
+        printScriptString(AS_STRING(value));
+    } else {
+        printValue(value);
+    }
+
     printf("'\n");
     return offset + 3;
 }
+
 
 /*
  * The core of the "debug" module is this function.
