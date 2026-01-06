@@ -40,3 +40,7 @@ Add break; and continue; Both should be jumps I think.
 Native function calls are fast in part because we don’t validate that the call passes as many arguments as the function expects.
 We really should, or an incorrect call to a native function without enough arguments could cause the function to read uninitialized memory.
 Add arity checking.
+
+--- classes ---
+Make classes more complex by adding methods similar to dunder methods in python, instead of __str__(), use something like ~str()
+How do we remove a field from an instance. We can set a field's value to nil, but the entry in the hash table is still there.

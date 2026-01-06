@@ -41,7 +41,7 @@ static char* readFile(const char *path) {
     }
     size_t bytesRead = fread(buffer, sizeof(char), fileSize, file); // fread copies the bytes from the file to the buffer
                                                                                     // and bytesRead is how many bytes were read
-                                                                                    // if everything goes well, bytesRead is the length of the buffer
+                                                                                    // if everything goes well, bytesRead is the length of the file
     if (bytesRead < fileSize) {
         fprintf(stderr, "Cound not read file \"%s\".\n", path);
         exit(74);
