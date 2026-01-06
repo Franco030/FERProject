@@ -71,6 +71,7 @@ typedef struct {
     Token name;
     int depth;
     bool isCaptured;
+    bool isPerm;
 } Local;
 
 typedef struct {
@@ -397,7 +398,7 @@ static int resolveUpvalue(Compiler *compiler, Token *name) {
     return -1;
 }
 
-static void addLocal(Token name) {
+static void addLocal(Token name, bool isPerm) {
     if (current->localCount == UINT8_COUNT) {
         error("Too many local variables in function.");
         return;
@@ -407,9 +408,10 @@ static void addLocal(Token name) {
     local->name = name;
     local->depth = -1;
     local->isCaptured = false;
+    local->isPerm = isPerm;
 }
 
-static void declareVariable() {
+static void declareVariable(bool isPerm) {
     if (current->scopeDepth == 0) return;
 
     Token *name = &parser.previous;
@@ -424,13 +426,13 @@ static void declareVariable() {
         }
     }
 
-    addLocal(*name);
+    addLocal(*name, isPerm);
 }
 
-static uint8_t parseVariable(const char *errorMessage) {
+static uint8_t parseVariable(const char *errorMessage, bool isPerm) {
     consume(TOKEN_IDENTIFIER, errorMessage);
 
-    declareVariable();
+    declareVariable(isPerm);
     if (current->scopeDepth > 0) return 0;
 
     return identifierConstant(&parser.previous);
@@ -441,13 +443,17 @@ static void markInitialized() {
     current->locals[current->localCount - 1].depth = current->scopeDepth;
 }
 
-static void defineVariable(uint8_t global) {
+static void defineVariable(uint8_t global, bool isPerm) {
     if (current->scopeDepth > 0) {
         markInitialized();
         return;
     }
 
-    emitBytes(OP_DEFINE_GLOBAL, global);
+    if (isPerm) {
+        emitBytes(OP_DEFINE_GLOBAL_PERM, global);
+    } else {
+        emitBytes(OP_DEFINE_GLOBAL, global);
+    }
 }
 
 static uint8_t argumentList() {
@@ -654,6 +660,10 @@ static void namedVariable(Token name, bool canAssign) {
     }
 
     if (canAssign && match(TOKEN_EQUAL)) {
+        if (arg != -1 && current->locals[arg].isPerm) {
+            error("Can't reassign to permanent variable");
+        }
+
         expression();
         emitBytes(setOp, (uint8_t)arg);
     } else {
@@ -888,8 +898,8 @@ static void function(FunctionType type) {
             if (current->function->arity > 255) {
                 errorAtCurrent("Can't have more than 255 parameters");
             }
-            uint8_t constant = parseVariable("Expect parameter name");
-            defineVariable(constant);
+            uint8_t constant = parseVariable("Expect parameter name", false);
+            defineVariable(constant, false);
         } while (match(TOKEN_COMMA));
     }
     consume(TOKEN_RIGHT_PAREN, "Expect ')' after parameters.");
@@ -922,10 +932,10 @@ static void classDeclaration() {
     consume(TOKEN_IDENTIFIER, "Expect class name.");
     Token className = parser.previous;
     uint8_t nameConstant = identifierConstant(&parser.previous);
-    declareVariable();
+    declareVariable(false);
 
     emitBytes(OP_CLASS, nameConstant);
-    defineVariable(nameConstant);
+    defineVariable(nameConstant, false);
 
     ClassCompiler classCompiler;
     classCompiler.hasSuperclass = false;
@@ -941,8 +951,8 @@ static void classDeclaration() {
         }
 
         beginScope();
-        addLocal(syntheticToken("super"));
-        defineVariable(0);
+        addLocal(syntheticToken("super"), false);
+        defineVariable(0, false);
 
         namedVariable(className, false);
         emitByte(OP_INHERIT);
@@ -965,14 +975,14 @@ static void classDeclaration() {
 }
 
 static void funDeclaration() {
-    uint8_t global = parseVariable("Expect function name.");
+    uint8_t global = parseVariable("Expect function name.", false);
     markInitialized();
     function(TYPE_FUNCTION);
-    defineVariable(global);
+    defineVariable(global, false);
 }
 
 static void varDeclaration() {
-    uint8_t global = parseVariable("Expect variable name");
+    uint8_t global = parseVariable("Expect variable name", false);
 
     if (match(TOKEN_EQUAL)) {
         expression();
@@ -980,7 +990,19 @@ static void varDeclaration() {
         emitByte(OP_NIL);
     }
     consume(TOKEN_SEMICOLON, "Expect ';' after variable declaration.");
-    defineVariable(global);
+    defineVariable(global, false);
+}
+
+static void permDeclaration() {
+    uint8_t global = parseVariable("Expect variable name.", true);
+
+    if (match(TOKEN_EQUAL)) {
+        expression();
+    } else {
+        error("Permanent variable must be initialized.");
+    }
+    consume(TOKEN_SEMICOLON, "Expect ';' after variable declaration.");
+    defineVariable(global, true);
 }
 
 static void expressionStatement() {
@@ -1120,6 +1142,8 @@ static void declaration() {
       funDeclaration();
     } else if (match(TOKEN_VAR)) {
         varDeclaration();
+    } else if (match(TOKEN_PERM)) {
+        permDeclaration();
     } else {
         statement();
     }

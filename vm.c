@@ -107,6 +107,7 @@ void initVM() {
     vm.grayStack = NULL;
 
     initTable(&vm.globals);
+    initTable(&vm.globalPerms);
     initTable(&vm.strings);
 
     vm.initString = NULL;
@@ -118,6 +119,7 @@ void initVM() {
 
 void freeVM() {
     freeTable(&vm.globals);
+    freeTable(&vm.globalPerms);
     freeTable(&vm.strings);
     vm.initString = NULL;
     freeObjects();
@@ -417,8 +419,23 @@ static InterpretResult run() {
                 pop();
                 break;
             }
+            case OP_DEFINE_GLOBAL_PERM: {
+                ObjString *name = READ_STRING();
+                tableSet(&vm.globals, name, peek(0));
+                tableSet(&vm.globalPerms, name, BOOL_VAL(true));
+                pop();
+                break;
+            }
             case OP_SET_GLOBAL: {
                 ObjString *name = READ_STRING();
+
+                Value dummy;
+
+                if (tableGet(&vm.globalPerms, name, &dummy)) {
+                    runtimeError("Cannot reassign global const '%s'.", name->chars);
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
                 if (tableSet(&vm.globals, name, peek(0))) {
                     tableDelete(&vm.globals, name);
                     runtimeError("Undefined variable '%s'.", name->chars);
