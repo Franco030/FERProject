@@ -188,6 +188,10 @@ ObjString* copyString(const char *chars, int length) {
     return allocateString(heapChars, newLength, hash);
 }
 
+void initList(ObjString *name) {
+
+}
+
 ObjUpvalue* newUpvalue(Value *slot) {
     ObjUpvalue *upvalue = ALLOCATE_OBJ(ObjUpvalue, OBJ_UPVALUE);
     upvalue->closed = NIL_VAL;
