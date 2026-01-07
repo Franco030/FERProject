@@ -102,6 +102,13 @@ struct ObjString {
     uint32_t hash;
 };
 
+typedef struct {
+    Obj obj;
+    Value *values;
+    int count;
+    int capacity;
+} ObjList;
+
 typedef struct ObjUpvalue {
     Obj obj;
     Value *location;

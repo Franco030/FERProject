@@ -86,9 +86,19 @@ typedef enum {
     TYPE_SCRIPT
 } FunctionType;
 
+typedef struct Loop {
+    struct Loop *enclosing;
+    int start;
+    int scopeDepth;
+    int *breakJumps;
+    int breakCount;
+    int breakCapacity;
+} Loop;
+
 typedef struct Compiler {
     struct Compiler *enclosing;
     ObjFunction *function;
+    Loop *loop;
     FunctionType type;
     Local locals[UINT8_COUNT];
     int localCount;
@@ -284,6 +294,7 @@ static void initCompiler(Compiler *compiler, FunctionType type) {
     compiler->type = type;
     compiler->localCount = 0;
     compiler->scopeDepth = 0;
+    compiler->loop = NULL;
     compiler->function = newFunction();
     current = compiler;
     if (type != TYPE_SCRIPT) {
@@ -359,6 +370,19 @@ static int resolveLocal(Compiler *compiler, Token *name) {
     }
 
     return -1;
+}
+
+static void discardLocals() {
+    int i = current->localCount - 1;
+
+    while (i >= 0 && current->locals[i].depth > current->loop->scopeDepth) {
+        if (current->locals[i].isCaptured) {
+            emitByte(OP_CLOSE_UPVALUE);
+        } else {
+            emitByte(OP_POP);
+        }
+        i--;
+    }
 }
 
 static int addUpvalue(Compiler *compiler, uint8_t index, bool isLocal) {
@@ -1011,6 +1035,34 @@ static void expressionStatement() {
     emitByte(OP_POP);
 }
 
+static void breakStatement() {
+    if (current->loop == NULL) {
+        error("Can't use 'break' outside of a loop.");
+    }
+    consume(TOKEN_SEMICOLON, "Expect ';' after 'break'.");
+
+    discardLocals();
+
+    int jump = emitJump(OP_JUMP);
+    Loop *loop = current->loop;
+    if (loop->breakCapacity < loop->breakCount + 1) {
+        int oldCapacity = loop->breakCapacity;
+        loop->breakCapacity = GROW_CAPACITY(oldCapacity);
+        loop->breakJumps = GROW_ARRAY(int, loop->breakJumps, oldCapacity, loop->breakCapacity);
+    }
+    loop->breakJumps[loop->breakCount++] = jump;
+}
+
+static void continueStatement() {
+    if (current->loop == NULL) {
+        error("Can't use 'continue' outside of a loop.");
+    }
+    consume(TOKEN_SEMICOLON, "Expect ';' after 'continue'.");
+
+    discardLocals();
+    emitLoop(current->loop->start);
+}
+
 static void forStatement() {
     beginScope();
     consume(TOKEN_LEFT_PAREN, "Expect '(' after 'for'.");
@@ -1045,6 +1097,15 @@ static void forStatement() {
         patchJump(bodyJump);
     }
 
+    Loop loop;
+    loop.start = loopStart;
+    loop.scopeDepth = current->scopeDepth;
+    loop.enclosing = current->loop;
+    loop.breakJumps = NULL;
+    loop.breakCount = 0;
+    loop.breakCapacity = 0;
+    current->loop = &loop;
+
     statement();
     emitLoop(loopStart);
 
@@ -1052,6 +1113,12 @@ static void forStatement() {
         patchJump(exitJump);
         emitByte(OP_POP);
     }
+
+    for (int i = 0; i < loop.breakCount; i++) {
+        patchJump(loop.breakJumps[i]);
+    }
+    FREE_ARRAY(int, loop.breakJumps, loop.breakCapacity);
+    current->loop = loop.enclosing;
 
     endScope();
 }
@@ -1099,6 +1166,16 @@ static void returnStatement() {
 
 static void whileStatement() {
     int loopStart = currentChunk()->count;
+
+    Loop loop;
+    loop.start = loopStart;
+    loop.scopeDepth = current->scopeDepth;
+    loop.enclosing = current->loop;
+    loop.breakJumps = NULL;
+    loop.breakCount = 0;
+    loop.breakCapacity = 0;
+    current->loop = &loop;
+
     consume(TOKEN_LEFT_PAREN, "Expect '(' after 'while'.");
     expression();
     consume(TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
@@ -1110,6 +1187,13 @@ static void whileStatement() {
 
     patchJump(exitJump);
     emitByte(OP_POP);
+
+    for (int i = 0; i < loop.breakCount; i++) {
+        patchJump(loop.breakJumps[i]);
+    }
+
+    FREE_ARRAY(int, loop.breakJumps, loop.breakCapacity);
+    current->loop = loop.enclosing;
 }
 
 static void synchronize() {
@@ -1163,6 +1247,10 @@ static void statement() {
         endScope();
     } else if (match(TOKEN_FOR)) {
         forStatement();
+    } else if (match(TOKEN_BREAK)) {
+        breakStatement();
+    } else if (match(TOKEN_CONTINUE)) {
+        continueStatement();
     } else if (match(TOKEN_IF)) {
         ifStatement();
     } else {
