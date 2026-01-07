@@ -668,6 +668,21 @@ static void string(bool canAssign) {
     emitConstant(OBJ_VAL(copyString(parser.previous.start + 1, parser.previous.length - 2)));
 }
 
+static void list(bool canAssign) {
+    uint8_t listCount = 0;
+    if (!check(TOKEN_RIGHT_BRACKET)) {
+        do {
+            expression();
+            if (listCount == 255) {
+                error("Can't have more than 255 elements in one list");
+            }
+            listCount++;
+        } while (match(TOKEN_COMMA));
+    }
+    consume(TOKEN_RIGHT_BRACKET, "Expect ']' after list.");
+    emitBytes(OP_LIST, listCount);
+}
+
 static void namedVariable(Token name, bool canAssign) {
     uint8_t getOp, setOp;
     int arg = resolveLocal(current, &name);
@@ -791,6 +806,8 @@ static void unary(bool canAssign) {
 ParseRule rules[] = {
     [TOKEN_LEFT_PAREN]      = {grouping, call,          PREC_CALL},
     [TOKEN_RIGHT_PAREN]     = {NULL,     NULL,          PREC_NONE},
+    [TOKEN_LEFT_BRACKET]    = {list,     NULL,          PREC_NONE},
+    [TOKEN_RIGHT_BRACKET]   = {NULL,     NULL,          PREC_NONE},
     [TOKEN_LEFT_BRACE]      = {NULL,     NULL,          PREC_NONE},
     [TOKEN_RIGHT_BRACE]     = {NULL,     NULL,          PREC_NONE},
     [TOKEN_COMMA]           = {NULL,     NULL,          PREC_NONE},
@@ -800,7 +817,7 @@ ParseRule rules[] = {
     [TOKEN_SEMICOLON]       = {NULL,     NULL,          PREC_NONE},
     [TOKEN_SLASH]           = {NULL,     binary,        PREC_FACTOR},
     [TOKEN_STAR]            = {NULL,     binary,        PREC_FACTOR},
-    [TOKEN_BANG]            = {unary,     NULL,         PREC_NONE},
+    [TOKEN_BANG]            = {unary,    NULL,          PREC_NONE},
     [TOKEN_BANG_EQUAL]      = {NULL,     binary,        PREC_EQUALITY},
     [TOKEN_EQUAL]           = {NULL,     NULL,          PREC_NONE},
     [TOKEN_EQUAL_EQUAL]     = {NULL,     binary,        PREC_EQUALITY},

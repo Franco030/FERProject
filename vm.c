@@ -172,10 +172,10 @@ static bool callValue(Value callee, int argCount) {
                 return call(bound->method, argCount);
             }
             case OBJ_CLASS: {
-                ObjClass *klass = AS_CLASS(callee);
-                vm.stackTop[-argCount - 1] = OBJ_VAL(newInstance(klass));
+                ObjClass *cls = AS_CLASS(callee);
+                vm.stackTop[-argCount - 1] = OBJ_VAL(newInstance(cls));
                 Value initializer;
-                if (tableGet(&klass->methods, vm.initString, &initializer)) {
+                if (tableGet(&cls->methods, vm.initString, &initializer)) {
                     return call(AS_CLOSURE(initializer), argCount);
                 } else if (argCount != 0) {
                     runtimeError("Expected 0 arguments but got %d.", argCount);
@@ -200,9 +200,9 @@ static bool callValue(Value callee, int argCount) {
     return false;
 }
 
-static bool invokeFromClass(ObjClass *klass, ObjString *name, int argCount) {
+static bool invokeFromClass(ObjClass *cls, ObjString *name, int argCount) {
     Value method;
-    if (!tableGet(&klass->methods, name, &method)) {
+    if (!tableGet(&cls->methods, name, &method)) {
         runtimeError("Undefined property '%s'.", name->chars);
         return false;
     }
@@ -225,12 +225,12 @@ static bool invoke(ObjString *name, int argCount) {
         return callValue(value, argCount);
     }
 
-    return invokeFromClass(instance->klass, name, argCount);
+    return invokeFromClass(instance->cls, name, argCount);
 }
 
-static bool bindMethod(ObjClass *klass, ObjString *name) {
+static bool bindMethod(ObjClass *cls, ObjString *name) {
     Value method;
-    if (!tableGet(&klass->methods, name, &method)) {
+    if (!tableGet(&cls->methods, name, &method)) {
         runtimeError("Undefined property '%s'.", name->chars);
         return false;
     }
@@ -276,8 +276,8 @@ static void closeUpvalues(Value *last) {
 
 static void defineMethod(ObjString *name) {
     Value method = peek(0);
-    ObjClass *klass = AS_CLASS(peek(1));
-    tableSet(&klass->methods, name, method);
+    ObjClass *cls = AS_CLASS(peek(1));
+    tableSet(&cls->methods, name, method);
     pop();
 }
 
@@ -469,7 +469,7 @@ static InterpretResult run() {
                     break;
                 }
 
-                if (!bindMethod(instance->klass, name)) {
+                if (!bindMethod(instance->cls, name)) {
                     return INTERPRET_RUNTIME_ERROR;
                 }
                 break;
@@ -529,6 +529,22 @@ static InterpretResult run() {
                     return INTERPRET_RUNTIME_ERROR;
                 }
                 push(NUMBER_VAL(-AS_NUMBER(pop())));
+                break;
+            }
+            case OP_LIST: {
+                ObjList *list = newList();
+                list->count = READ_BYTE();
+                push(OBJ_VAL(list));
+
+                int oldCapacity = list->capacity;
+                list->capacity = GROW_CAPACITY(list->count);
+                list->values = GROW_ARRAY(Value, list->values, oldCapacity, list->capacity);
+
+                pop();
+                for (int i = list->count - 1; i >= 0; i--) {
+                    list->values[i] = pop();
+                }
+                push(OBJ_VAL(list));
                 break;
             }
             case OP_PRINT: {

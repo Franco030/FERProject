@@ -42,10 +42,10 @@ ObjBoundMethod* newBoundMethod(Value receiver, ObjClosure *method) {
 }
 
 ObjClass* newClass(ObjString *name) {
-    ObjClass *klass = ALLOCATE_OBJ(ObjClass, OBJ_CLASS);
-    klass->name = name;
-    initTable(&klass->methods);
-    return klass;
+    ObjClass *cls = ALLOCATE_OBJ(ObjClass, OBJ_CLASS);
+    cls->name = name;
+    initTable(&cls->methods);
+    return cls;
 }
 
 ObjClosure* newClosure(ObjFunction *function) {
@@ -70,9 +70,9 @@ ObjFunction* newFunction() {
     return function;
 }
 
-ObjInstance* newInstance(ObjClass *klass) {
+ObjInstance* newInstance(ObjClass *cls) {
     ObjInstance *instance = ALLOCATE_OBJ(ObjInstance, OBJ_INSTANCE);
-    instance->klass = klass;
+    instance->cls = cls;
     initTable(&instance->fields);
     return instance;
 }
@@ -192,6 +192,14 @@ void initList(ObjString *name) {
 
 }
 
+ObjList* newList() {
+    ObjList *list = ALLOCATE_OBJ(ObjList, OBJ_LIST);
+    list->values = NULL;
+    list->capacity = 0;
+    list->count = 0;
+    return list;
+}
+
 ObjUpvalue* newUpvalue(Value *slot) {
     ObjUpvalue *upvalue = ALLOCATE_OBJ(ObjUpvalue, OBJ_UPVALUE);
     upvalue->closed = NIL_VAL;
@@ -206,6 +214,17 @@ static void printFunction(ObjFunction *function) {
         return;
     }
     printf("<fn %s>", function->name->chars);
+}
+
+static void printList(ObjList *list) {
+    printf("[");
+    for (int i = 0; i < list->count; i++) {
+        printValue(list->values[i]);
+        if (i != list->count - 1) {
+            printf(", ");
+        }
+    }
+    printf("]");
 }
 
 void printObject(Value value) {
@@ -223,13 +242,16 @@ void printObject(Value value) {
             printFunction(AS_FUNCTION(value));
             break;
         case OBJ_INSTANCE:
-            printf("%s instance", AS_INSTANCE(value)->klass->name->chars);
+            printf("%s instance", AS_INSTANCE(value)->cls->name->chars);
             break;
         case OBJ_NATIVE:
             printf("<native fn>");
             break;
         case OBJ_STRING:
             printf("%s", AS_CSTRING(value));
+            break;
+        case OBJ_LIST:
+            printList(AS_LIST(value));
             break;
         case OBJ_UPVALUE:
             printf("upvalue");

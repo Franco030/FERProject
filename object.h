@@ -134,7 +134,7 @@ typedef struct {
 
 typedef struct {
     Obj obj;
-    ObjClass *klass;
+    ObjClass *cls;
     Table fields;
 } ObjInstance;
 
@@ -148,11 +148,11 @@ ObjBoundMethod* newBoundMethod(Value receiver, ObjClosure *method);
 ObjClass* newClass(ObjString *name);
 ObjClosure* newClosure(ObjFunction *function);
 ObjFunction* newFunction();
-ObjInstance* newInstance(ObjClass *klass);
+ObjInstance* newInstance(ObjClass *cls);
 ObjNative* newNative(NativeFn function);
 ObjString* takeString(char *chars, int length);
 ObjString* copyString(const char *chars, int length);
-ObjList* newList(ObjString *name);
+ObjList* newList();
 ObjUpvalue* newUpvalue(Value *slot);
 void printObject(Value value);
 
