@@ -188,16 +188,18 @@ ObjString* copyString(const char *chars, int length) {
     return allocateString(heapChars, newLength, hash);
 }
 
-void initList(ObjString *name) {
-
-}
-
 ObjList* newList() {
     ObjList *list = ALLOCATE_OBJ(ObjList, OBJ_LIST);
     list->values = NULL;
     list->capacity = 0;
     list->count = 0;
     return list;
+}
+
+ObjDictionary* newDictionary() {
+    ObjDictionary *dictionary = ALLOCATE_OBJ(ObjDictionary, OBJ_DICTIONARY);
+    initTable(&dictionary->table);
+    return dictionary;
 }
 
 ObjUpvalue* newUpvalue(Value *slot) {
@@ -252,6 +254,8 @@ void printObject(Value value) {
             break;
         case OBJ_LIST:
             printList(AS_LIST(value));
+            break;
+        case OBJ_DICTIONARY:
             break;
         case OBJ_UPVALUE:
             printf("upvalue");

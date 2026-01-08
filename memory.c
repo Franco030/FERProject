@@ -145,8 +145,14 @@ static void blackenObject(Obj *object) {
             }
             break;
         }
+        case OBJ_DICTIONARY: {
+            ObjDictionary *dictionary = (ObjDictionary*)object;
+            markTable(&dictionary->table);
+            break;
+        }
         case OBJ_UPVALUE:
             markValue(((ObjUpvalue*)object)->closed);
+            break;
         case OBJ_NATIVE:
         case OBJ_STRING:
             break;
@@ -199,6 +205,12 @@ static void freeObject(Obj *object) {
             ObjList *list = (ObjList*)object;
             FREE_ARRAY(Value, list->values, list->capacity);
             FREE(ObjList, object);
+            break;
+        }
+        case OBJ_DICTIONARY: {
+            ObjDictionary *dictionary = (ObjDictionary*)object;
+            freeTable(&dictionary->table);
+            FREE(ObjDictionary, dictionary);
             break;
         }
         case OBJ_UPVALUE:

@@ -46,7 +46,7 @@ typedef enum {
     PREC_TERM,          // + -
     PREC_FACTOR,        // * /
     PREC_UNARY,         // ! -
-    PREC_CALL,          // . ()
+    PREC_CALL,          // . () []
     PREC_PRIMARY
 } Precedence;
 
@@ -758,12 +758,33 @@ static void at_(bool canAssign) {
     expression();
     consume(TOKEN_RIGHT_BRACKET, "Expect ']' after index.");
 
+    // if it's a list or if it's a dict
+
+
     if (canAssign && match(TOKEN_EQUAL)) {
         expression();
         emitByte(OP_SET_ITEM);
     } else {
         emitByte(OP_GET_ITEM);
     }
+}
+
+static void map(bool canAssign) {
+    uint8_t itemCount = 0;
+    if (!check(TOKEN_RIGHT_BRACE)) {
+        do {
+            expression();
+            consume(TOKEN_COLON, "Expect ':' key.");
+            expression();
+
+            if (itemCount == 255) {
+                error("Can't have more than 255 elements in dictionary");
+            }
+            itemCount++;
+        } while (match(TOKEN_COMMA));
+    }
+    consume(TOKEN_RIGHT_BRACE, "Expect '}' after dictionary.");
+    emitBytes(OP_DICTIONARY, itemCount);
 }
 
 /*
@@ -820,13 +841,14 @@ ParseRule rules[] = {
     [TOKEN_RIGHT_PAREN]     = {NULL,     NULL,          PREC_NONE},
     [TOKEN_LEFT_BRACKET]    = {list,     at_,           PREC_CALL},
     [TOKEN_RIGHT_BRACKET]   = {NULL,     NULL,          PREC_NONE},
-    [TOKEN_LEFT_BRACE]      = {NULL,     NULL,          PREC_NONE},
+    [TOKEN_LEFT_BRACE]      = {map,      NULL,          PREC_NONE},
     [TOKEN_RIGHT_BRACE]     = {NULL,     NULL,          PREC_NONE},
     [TOKEN_COMMA]           = {NULL,     NULL,          PREC_NONE},
     [TOKEN_DOT]             = {NULL,     dot,           PREC_CALL},
     [TOKEN_MINUS]           = {unary,    binary,        PREC_TERM},
     [TOKEN_PLUS]            = {NULL,     binary,        PREC_TERM},
     [TOKEN_SEMICOLON]       = {NULL,     NULL,          PREC_NONE},
+    [TOKEN_COLON]           = {NULL,     NULL,          PREC_NONE},
     [TOKEN_SLASH]           = {NULL,     binary,        PREC_FACTOR},
     [TOKEN_STAR]            = {NULL,     binary,        PREC_FACTOR},
     [TOKEN_BANG]            = {unary,    NULL,          PREC_NONE},

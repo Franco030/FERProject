@@ -597,6 +597,26 @@ static InterpretResult run() {
                 push(OBJ_VAL(list));
                 break;
             }
+            case OP_DICTIONARY: {
+                uint8_t items = READ_BYTE();
+                ObjDictionary *dictionary = newDictionary();
+                push(OBJ_VAL(dictionary));
+
+                for (int i = 0; i < items; i++) {
+                    Value value = peek((2 * i) + 1);
+                    Value key = peek((2 * i) + 2);
+
+                    tableSet(&dictionary->table, AS_STRING(key), value);
+                }
+
+                pop(); // dictionary
+                for (int i = 0; i < items; i++) {
+                    pop(); // value
+                    pop(); // key
+                }
+                push(OBJ_VAL(dictionary));
+                break;
+            }
             case OP_PRINT: {
                 printValue(pop());
                 printf("\n");
