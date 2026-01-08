@@ -16,6 +16,10 @@
 
 VM vm;
 
+/*
+ * ------------------------------------ STANDARD LIBRARY ------------------------------------
+ */
+
 static Value clockNative(int argCount, Value *args) {
     return NUMBER_VAL((double)clock() / CLOCKS_PER_SEC);
 }
@@ -401,6 +405,52 @@ static InterpretResult run() {
             case OP_SET_LOCAL: {
                 uint8_t slot = READ_BYTE();
                 frame->slots[slot] = peek(0);
+                break;
+            }
+            case OP_GET_ITEM: {
+                if (!IS_NUMBER(peek(0))) {
+                    runtimeError("Index must be a number.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                if (!IS_LIST(peek(1))) {
+                    runtimeError("Identifier must be a list.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                ObjList *list = AS_LIST(peek(1));
+                if (0 > AS_NUMBER(peek(0)) || AS_NUMBER(peek(0)) >= list->count) {
+                    runtimeError("List is out of bounds.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                int index = AS_NUMBER(pop());
+                pop();
+
+                push(list->values[index]);
+                break;
+            }
+            case OP_SET_ITEM: {
+                if (!IS_NUMBER(peek(1))) {
+                    runtimeError("Index must be a number.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                if (!IS_LIST(peek(2))) {
+                    runtimeError("Identifier must be a list.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                ObjList *list = AS_LIST(peek(2));
+                if (0 > AS_NUMBER(peek(1)) || AS_NUMBER(peek(1)) >= list->count) {
+                    runtimeError("List is out of bounds.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                Value item = pop();
+                int index = AS_NUMBER(pop());
+                pop();
+
+                list->values[index] = item;
+                push(list->values[index]);
                 break;
             }
             case OP_GET_GLOBAL: {

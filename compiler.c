@@ -754,6 +754,18 @@ static void this_(bool canAssign) {
     variable(false);
 }
 
+static void at_(bool canAssign) {
+    expression();
+    consume(TOKEN_RIGHT_BRACKET, "Expect ']' after index.");
+
+    if (canAssign && match(TOKEN_EQUAL)) {
+        expression();
+        emitByte(OP_SET_ITEM);
+    } else {
+        emitByte(OP_GET_ITEM);
+    }
+}
+
 /*
  * The leading - token has been consumed and is sitting in parser.previous.
  * We grab the token type form that to note which unary operator we're dealing with. It's unnecessary right now, but this will make more sense when we
@@ -806,7 +818,7 @@ static void unary(bool canAssign) {
 ParseRule rules[] = {
     [TOKEN_LEFT_PAREN]      = {grouping, call,          PREC_CALL},
     [TOKEN_RIGHT_PAREN]     = {NULL,     NULL,          PREC_NONE},
-    [TOKEN_LEFT_BRACKET]    = {list,     NULL,          PREC_NONE},
+    [TOKEN_LEFT_BRACKET]    = {list,     at_,           PREC_CALL},
     [TOKEN_RIGHT_BRACKET]   = {NULL,     NULL,          PREC_NONE},
     [TOKEN_LEFT_BRACE]      = {NULL,     NULL,          PREC_NONE},
     [TOKEN_RIGHT_BRACE]     = {NULL,     NULL,          PREC_NONE},

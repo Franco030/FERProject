@@ -1,6 +1,5 @@
 --- Strings ---
-Add escape characters?
-Add access to individual characters, the string's length, changing case, splitting, joining, searching...
+Add access to individual characters, the string's length, changing case, splitting, joining, searching... this is from stdlib I guess
 
 --- Conditionals ---
 Maybe add conditional expressions like ?:
@@ -12,9 +11,6 @@ switchStmt     → "switch" "(" expression ")"
                  "{" switchCase* defaultCase? "}" ;
 switchCase     → "option" expression ":" statement* ;
 defaultCase    → "default" ":" statement* ;
-
---- loops ---
-Add break; and continue; Both should be jumps I think.
 
 --- functions ---
 Native function calls are fast in part because we don’t validate that the call passes as many arguments as the function expects.
