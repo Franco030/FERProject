@@ -408,50 +408,105 @@ static InterpretResult run() {
                 break;
             }
             case OP_GET_ITEM: {
-                if (!IS_NUMBER(peek(0))) {
-                    runtimeError("Index must be a number.");
-                    return INTERPRET_RUNTIME_ERROR;
-                }
-                if (!IS_LIST(peek(1))) {
-                    runtimeError("Identifier must be a list.");
-                    return INTERPRET_RUNTIME_ERROR;
+                Value key = peek(0);
+                Value target = peek(1);
+
+                if (IS_LIST(target)) {
+                    if (!IS_NUMBER(key)) {
+                        runtimeError("List index must be a number.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
+                    ObjList *list = AS_LIST(peek(1));
+                    int index = AS_NUMBER(key);
+                    if (0 > index || index >= list->count) {
+                        runtimeError("List index is out of bounds.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
+                    pop(); // key = index
+                    pop(); // list
+
+                    push(list->values[index]);
+                    break;
                 }
 
-                ObjList *list = AS_LIST(peek(1));
-                if (0 > AS_NUMBER(peek(0)) || AS_NUMBER(peek(0)) >= list->count) {
-                    runtimeError("List is out of bounds.");
-                    return INTERPRET_RUNTIME_ERROR;
+                if (IS_DICTIONARY(target)) {
+                    ObjDictionary *dictionary = AS_DICTIONARY(target);
+
+                    if (!IS_STRING(key)) {
+                        runtimeError("Dictionary index must be a string.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
+                    Value value;
+                    if (tableGet(&dictionary->table, AS_STRING(key), &value)) {
+                        pop(); // key
+                        pop(); // dict
+                        push(value);
+                    } else {
+                        pop();
+                        pop();
+                        push(NIL_VAL);
+                    }
+                    break;
                 }
 
-                int index = AS_NUMBER(pop());
-                pop();
-
-                push(list->values[index]);
-                break;
+                runtimeError("Can only subscript lists and dictionaries.");
+                return INTERPRET_RUNTIME_ERROR;
             }
             case OP_SET_ITEM: {
-                if (!IS_NUMBER(peek(1))) {
-                    runtimeError("Index must be a number.");
-                    return INTERPRET_RUNTIME_ERROR;
-                }
-                if (!IS_LIST(peek(2))) {
-                    runtimeError("Identifier must be a list.");
-                    return INTERPRET_RUNTIME_ERROR;
+                // Lists
+                // Stack: [ ... , list, index, value ] (top)
+
+                // Dictionaries
+                // Stack: [ ... , dict, key, value ] (top)
+
+                Value item = peek(0);
+                Value key = peek(1);
+                Value target = peek(2);
+
+                if (IS_LIST(target)) {
+                    if (!IS_NUMBER(key)) {
+                        runtimeError("List index must be a number.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
+                    ObjList *list = AS_LIST(target);
+                    int index = AS_NUMBER(key);
+
+                    if (index < 0 || index >= list->count) {
+                        runtimeError("List index is out of bounds.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
+                    list->values[index] = item;
+                    pop(); // value
+                    pop(); // index
+                    pop(); // list
+                    push(item);
+                    break;
                 }
 
-                ObjList *list = AS_LIST(peek(2));
-                if (0 > AS_NUMBER(peek(1)) || AS_NUMBER(peek(1)) >= list->count) {
-                    runtimeError("List is out of bounds.");
-                    return INTERPRET_RUNTIME_ERROR;
+                if (IS_DICTIONARY(target)) {
+                    ObjDictionary *dictionary = AS_DICTIONARY(target);
+
+                    if (!IS_STRING(key)) {
+                        runtimeError("Dictionary index must be a string.");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+
+                    tableSet(&dictionary->table, AS_STRING(key), item);
+
+                    pop(); // item
+                    pop(); // key
+                    pop(); // dictionary
+                    push(item);
+                    break;
                 }
 
-                Value item = pop();
-                int index = AS_NUMBER(pop());
-                pop();
-
-                list->values[index] = item;
-                push(list->values[index]);
-                break;
+                runtimeError("Can only subscript lists and dictionaries.");
+                return INTERPRET_RUNTIME_ERROR;
             }
             case OP_GET_GLOBAL: {
                 ObjString *name = READ_STRING();

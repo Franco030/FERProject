@@ -229,6 +229,28 @@ static void printList(ObjList *list) {
     printf("]");
 }
 
+static void printDictionary(ObjDictionary *dictionary) {
+    printf("{");
+
+    int count = 0;
+    for (int i = 0; i < dictionary->table.capacity; i++) {
+        Entry *entry = &dictionary->table.entries[i];
+
+        if (entry->key == NULL) continue;
+
+        if (count > 0) {
+            printf(", ");
+        }
+
+        printf("\"%s\": ", entry->key->chars);
+        printValue(entry->value);
+
+        count++;
+    }
+
+    printf("}");
+}
+
 void printObject(Value value) {
     switch (OBJ_TYPE(value)) {
         case OBJ_BOUND_METHOD:
@@ -256,6 +278,7 @@ void printObject(Value value) {
             printList(AS_LIST(value));
             break;
         case OBJ_DICTIONARY:
+            printDictionary(AS_DICTIONARY(value));
             break;
         case OBJ_UPVALUE:
             printf("upvalue");

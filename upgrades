@@ -1,16 +1,6 @@
 --- Strings ---
 Add access to individual characters, the string's length, changing case, splitting, joining, searching... this is from stdlib I guess
 
---- Conditionals ---
-Maybe add conditional expressions like ?:
-Maybe add switch statements?
-
-The grammar should be:
-
-switchStmt     → "switch" "(" expression ")"
-                 "{" switchCase* defaultCase? "}" ;
-switchCase     → "option" expression ":" statement* ;
-defaultCase    → "default" ":" statement* ;
 
 --- functions ---
 Native function calls are fast in part because we don’t validate that the call passes as many arguments as the function expects.

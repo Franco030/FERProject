@@ -22,4 +22,6 @@ add_executable(cfer main.c
         object.c
         object.h
         table.c
-        table.h)
+        table.h
+        natives.c
+        natives.h)

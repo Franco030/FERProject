@@ -758,9 +758,6 @@ static void at_(bool canAssign) {
     expression();
     consume(TOKEN_RIGHT_BRACKET, "Expect ']' after index.");
 
-    // if it's a list or if it's a dict
-
-
     if (canAssign && match(TOKEN_EQUAL)) {
         expression();
         emitByte(OP_SET_ITEM);
