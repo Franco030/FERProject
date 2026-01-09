@@ -1,5 +1,6 @@
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "common.h"
@@ -81,6 +82,7 @@ void initVM() {
     initTable(&vm.globals);
     initTable(&vm.globalPerms);
     initTable(&vm.strings);
+    initTable(&vm.modules);
 
     vm.initString = NULL;
     vm.initString = copyString("init", 4);
@@ -92,6 +94,7 @@ void freeVM() {
     freeTable(&vm.globals);
     freeTable(&vm.globalPerms);
     freeTable(&vm.strings);
+    freeTable(&vm.modules);
     vm.initString = NULL;
     freeObjects();
 }
@@ -643,6 +646,42 @@ static InterpretResult run() {
                     pop(); // key
                 }
                 push(OBJ_VAL(dictionary));
+                break;
+            }
+            case OP_IMPORT: {
+                ObjString *name = READ_STRING();
+
+                if (strcmp(name->chars, "math") == 0) {
+                    defineMathNatives();
+                    break;
+                }
+
+                if (strcmp(name->chars, "time") == 0) {
+                    defineTimeNatives();
+                    push(NIL_VAL);
+                    break;
+                }
+
+                Value moduleValue;
+                if (tableGet(&vm.modules, name, &moduleValue)) {
+                    push(moduleValue);
+                    break;
+                }
+
+                tableSet(&vm.modules, name, NIL_VAL);
+
+                char *source = readFile(name->chars);
+                ObjFunction *function = compile(source);
+                free(source);
+                if (function == NULL) return INTERPRET_COMPILE_ERROR;
+
+                push(OBJ_VAL(function));
+                ObjClosure *closure = newClosure(function);
+                pop();
+                push(OBJ_VAL(closure));
+                call(closure, 0);
+
+                frame = &vm.frames[vm.frameCount - 1];
                 break;
             }
             case OP_PRINT: {

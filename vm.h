@@ -95,6 +95,7 @@ typedef struct {
     Table globals;
     Table globalPerms;
     Table strings;
+    Table modules;
     ObjString *initString;
     ObjUpvalue *openUpvalues;
     size_t bytesAllocated;

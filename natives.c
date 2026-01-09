@@ -105,7 +105,14 @@ static Value writeFileNative(int argCount, Value *args) {}
 static Value exitNative(int argCount, Value *args) {}
 
 void defineAllNatives() {
-    defineNative("clock", clockNative, 0);
     defineNative("str", strNative, 1);
     defineNative("len", lengthNative, 1);
+}
+
+void defineTimeNatives() {
+    defineNative("clock", clockNative, 0);
+}
+
+void defineMathNatives() {
+
 }

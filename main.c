@@ -21,7 +21,7 @@ static void repl() {
     }
 }
 
-static char* readFile(const char *path) {
+char* readFile(const char *path) {
     FILE *file = fopen(path, "rb"); // Mode: "rb" (read binary) ensures that the OS doesn't "translate" anything (like '\n' to a line jump)
                                                   // and it also ensures that ftell, gets the name of all the bytes in the file
     if (file == NULL) {

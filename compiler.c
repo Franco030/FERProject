@@ -1244,6 +1244,14 @@ static void whileStatement() {
     current->loop = loop.enclosing;
 }
 
+static void importStatement() {
+    consume(TOKEN_STRING, "Expect string of the name of the module after 'import'.");
+
+    uint8_t constant = makeConstant(OBJ_VAL(copyString(parser.previous.start + 1, parser.previous.length - 2)));
+    emitBytes(OP_IMPORT, constant);
+    consume(TOKEN_SEMICOLON, "Expect ';' after import");
+}
+
 static void synchronize() {
     parser.panicMode = false;
 
@@ -1301,6 +1309,8 @@ static void statement() {
         continueStatement();
     } else if (match(TOKEN_IF)) {
         ifStatement();
+    } else if (match(TOKEN_IMPORT)) {
+        importStatement();
     } else {
         expressionStatement();
     }
