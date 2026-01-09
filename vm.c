@@ -162,11 +162,6 @@ static bool callValue(Value callee, int argCount) {
                 return call(AS_CLOSURE(callee), argCount);
             case OBJ_NATIVE: {
                 ObjNative *native = AS_NATIVE(callee);
-                if (argCount != native->arity) {
-                    runtimeError("Expected %d arguments but got %d.", native->arity, argCount);
-                    return false;
-                }
-
                 NativeFn function = native->function;
                 Value result = function(argCount, vm.stackTop - argCount);
                 vm.stackTop -= argCount + 1;
