@@ -718,8 +718,8 @@ static void namedVariable(Token name, bool canAssign) {
     }
 
     if (canAssign && match(TOKEN_EQUAL)) {
-        if (arg != -1 && current->locals[arg].isPerm) {
-            error("Can't reassign to permanent variable");
+        if (setOp == OP_SET_LOCAL && arg != -1 && current->locals[arg].isPerm) {
+            error("Can't reassign to permanent local variable.");
         }
         expression();
 
