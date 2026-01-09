@@ -482,7 +482,7 @@ void defineAllNatives() {
     // Strings
     defineNative("str", strNative, 1);
     defineNative("len", lengthNative, 1);
-    defineNative("sub", subStrNative, 2);
+    defineNative("sub", subStrNative, 3);
     defineNative("upper", toUpperNative, 1);
     defineNative("lower", toLowerNative, 1);
     defineNative("index", indexOfNative, 2);
@@ -503,7 +503,7 @@ void defineAllNatives() {
 
     // Types
     defineNative("typeof", typeofNative, 1);
-    defineNative("assert", assertNative, 1);
+    defineNative("assert", assertNative, 2);
 }
 
 void defineTimeNatives() {
