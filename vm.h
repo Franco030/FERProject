@@ -128,7 +128,7 @@ void initVM();
 void freeVM();
 InterpretResult interpret(const char *source);
 
-void defineNative(const char *name, NativeFn function);
+void defineNative(const char *name, NativeFn function, int arity);
 
 /*
  * The stack protocol supports two operations

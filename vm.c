@@ -60,9 +60,9 @@ static void runtimeError(const char *format, ...) {
     resetStack();
 }
 
-void defineNative(const char *name, NativeFn function) {
+void defineNative(const char *name, NativeFn function, int arity) {
     push(OBJ_VAL(copyString(name, (int)strlen(name))));
-    push(OBJ_VAL(newNative(function)));
+    push(OBJ_VAL(newNative(function, arity)));
     tableSet(&vm.globals, AS_STRING(vm.stack[0]), vm.stack[1]);
     pop();
     pop();
@@ -157,8 +157,14 @@ static bool callValue(Value callee, int argCount) {
             case OBJ_CLOSURE:
                 return call(AS_CLOSURE(callee), argCount);
             case OBJ_NATIVE: {
-                NativeFn native = AS_NATIVE(callee);
-                Value result = native(argCount, vm.stackTop - argCount);
+                ObjNative *native = AS_NATIVE(callee);
+                if (argCount != native->arity) {
+                    runtimeError("Expected %d arguments but got %d.", native->arity, argCount);
+                    return false;
+                }
+
+                NativeFn function = native->function;
+                Value result = function(argCount, vm.stackTop - argCount);
                 vm.stackTop -= argCount + 1;
                 push(result);
                 return true;

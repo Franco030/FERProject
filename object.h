@@ -16,14 +16,14 @@
 #define IS_NATIVE(value)        isObjType(value, OBJ_NATIVE)
 #define IS_STRING(value)        isObjType(value, OBJ_STRING)
 #define IS_LIST(value)          isObjType(value, OBJ_LIST)
-#define IS_DICTIONARY(value)          isObjType(value, OBJ_DICTIONARY)
+#define IS_DICTIONARY(value)    isObjType(value, OBJ_DICTIONARY)
 
 #define AS_BOUND_METHOD(value)  ((ObjBoundMethod*)AS_OBJ(value))
 #define AS_CLASS(value)         ((ObjClass*)AS_OBJ(value))
 #define AS_CLOSURE(value)       ((ObjClosure*)AS_OBJ(value))
 #define AS_FUNCTION(value)      ((ObjFunction*)AS_OBJ(value))
 #define AS_INSTANCE(value)      ((ObjInstance*)AS_OBJ(value))
-#define AS_NATIVE(value)        (((ObjNative*)AS_OBJ(value))->function)
+#define AS_NATIVE(value)        (((ObjNative*)AS_OBJ(value)))
 #define AS_STRING(value)        ((ObjString*)AS_OBJ(value))
 #define AS_CSTRING(value)       (((ObjString*)AS_OBJ(value))->chars)
 #define AS_LIST(value)          ((ObjList*)AS_OBJ(value))
@@ -68,6 +68,7 @@ typedef Value (*NativeFn)(int argCount, Value *args);
 typedef struct {
     Obj obj;
     NativeFn function;
+    int arity;
 } ObjNative;
 
 /*
@@ -157,7 +158,7 @@ ObjClass* newClass(ObjString *name);
 ObjClosure* newClosure(ObjFunction *function);
 ObjFunction* newFunction();
 ObjInstance* newInstance(ObjClass *cls);
-ObjNative* newNative(NativeFn function);
+ObjNative* newNative(NativeFn function, int arity);
 ObjString* takeString(char *chars, int length);
 ObjString* copyString(const char *chars, int length);
 ObjList* newList();
