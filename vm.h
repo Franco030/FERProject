@@ -130,6 +130,7 @@ void freeVM();
 InterpretResult interpret(const char *source);
 
 void defineNative(const char *name, NativeFn function, int arity);
+bool isFalsey(Value value);
 
 /*
  * The stack protocol supports two operations

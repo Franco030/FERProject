@@ -268,7 +268,7 @@ static void defineMethod(ObjString *name) {
  * The rule for how other types are handled is called "falsiness", and we implement it here:
  */
 
-static bool isFalsey(Value value) {
+bool isFalsey(Value value) {
     return IS_NIL(value) || (IS_BOOL(value) && !AS_BOOL(value));
 }
 
@@ -660,6 +660,12 @@ static InterpretResult run() {
 
                 if (strcmp(name->chars, "time") == 0) {
                     defineTimeNatives();
+                    push(NIL_VAL);
+                    break;
+                }
+
+                if (strcmp(name->chars, "io") == 0) {
+                    defineIONatives();
                     push(NIL_VAL);
                     break;
                 }

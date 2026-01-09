@@ -4,5 +4,6 @@
 void defineAllNatives();
 void defineTimeNatives();
 void defineMathNatives();
+void defineIONatives();
 
 #endif //CFER_NATIVES_H
