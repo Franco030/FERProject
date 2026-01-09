@@ -66,6 +66,7 @@ void defineNative(const char *name, NativeFn function, int arity) {
     push(OBJ_VAL(copyString(name, (int)strlen(name))));
     push(OBJ_VAL(newNative(function, arity)));
     tableSet(&vm.globals, AS_STRING(peek(1)), peek(0));
+    tableSet(&vm.globalPerms, AS_STRING(peek(1)), peek(0));
     pop();
     pop();
 }
@@ -269,7 +270,7 @@ bool isFalsey(Value value) {
 
 /*
  * First, we calculate the length of the result string based on the lengths of the operands.
- * We allocates a character array for the result and then copy the two halves in.
+ * We allocate a character array for the result and then copy the two halves in.
  */
 
 static void concatenate() {
@@ -338,7 +339,14 @@ static InterpretResult run() {
 #define READ_BYTE() (*frame->ip++)
 #define READ_CONSTANT() (frame->closure->function->chunk.constants.values[READ_BYTE()])
 #define READ_SHORT() (frame->ip += 2, (uint16_t)((frame->ip[-2] << 8) | frame->ip[-1]))
+#define READ_UINT32() (frame->ip += 4, (uint32_t)( \
+    ((uint32_t)frame->ip[-4] << 24) | \
+    ((uint32_t)frame->ip[-3] << 16) | \
+    ((uint32_t)frame->ip[-2] << 8) | \
+    (uint32_t)frame->ip[-1]))
+#define READ_LONG_CONSTANT() (frame->closure->function->chunk.constants.values[READ_UINT32()])
 #define READ_STRING() AS_STRING(READ_CONSTANT())
+#define READ_STRING_LONG() AS_STRING(frame->closure->function->chunk.constants.values[READ_UINT32()])
 #define BINARY_OP(valueType, op) \
     do { \
         if (!IS_NUMBER(peek(0)) || !IS_NUMBER(peek(1))) { \
@@ -362,6 +370,11 @@ static InterpretResult run() {
         switch (instruction = READ_BYTE()) {
             case OP_CONSTANT: {
                 Value constant = READ_CONSTANT();
+                push(constant);
+                break;
+            }
+            case OP_CONSTANT_LONG: {
+                Value constant = READ_LONG_CONSTANT();
                 push(constant);
                 break;
             }
@@ -490,14 +503,37 @@ static InterpretResult run() {
                 push(value);
                 break;
             }
+            case OP_GET_GLOBAL_LONG: {
+                ObjString *name = READ_STRING_LONG();
+                Value value;
+                if (!tableGet(&vm.globals, name, &value)) {
+                    runtimeError("Undefined variable '%s'.", name->chars);
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                push(value);
+                break;
+            }
             case OP_DEFINE_GLOBAL: {
                 ObjString *name = READ_STRING();
                 tableSet(&vm.globals, name, peek(0));
                 pop();
                 break;
             }
+            case OP_DEFINE_GLOBAL_LONG: {
+                ObjString *name = READ_STRING_LONG();
+                tableSet(&vm.globals, name, peek(0));
+                pop();
+                break;
+            }
             case OP_DEFINE_GLOBAL_PERM: {
                 ObjString *name = READ_STRING();
+                tableSet(&vm.globals, name, peek(0));
+                tableSet(&vm.globalPerms, name, BOOL_VAL(true));
+                pop();
+                break;
+            }
+            case OP_DEFINE_GLOBAL_PERM_LONG: {
+                ObjString *name = READ_STRING_LONG();
                 tableSet(&vm.globals, name, peek(0));
                 tableSet(&vm.globalPerms, name, BOOL_VAL(true));
                 pop();
@@ -513,6 +549,20 @@ static InterpretResult run() {
                     return INTERPRET_RUNTIME_ERROR;
                 }
 
+                if (tableSet(&vm.globals, name, peek(0))) {
+                    tableDelete(&vm.globals, name);
+                    runtimeError("Undefined variable '%s'.", name->chars);
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                break;
+            }
+            case OP_SET_GLOBAL_LONG: {
+                ObjString *name = READ_STRING_LONG();
+                Value dummy;
+                if (tableGet(&vm.globalPerms, name, &dummy)) {
+                    runtimeError("Cannot reassign global const '%s'.", name->chars);
+                    return INTERPRET_RUNTIME_ERROR;
+                }
                 if (tableSet(&vm.globals, name, peek(0))) {
                     tableDelete(&vm.globals, name);
                     runtimeError("Undefined variable '%s'.", name->chars);

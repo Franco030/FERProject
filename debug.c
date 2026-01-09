@@ -66,6 +66,18 @@ static int byteInstruction(const char *name, Chunk *chunk, int offset) {
     return offset + 2;
 }
 
+static int longGlobalInstruction(const char *name, Chunk *chunk, int offset) {
+    uint32_t nameIndex = (uint32_t)(chunk->code[offset + 1] << 24) |
+                         (uint32_t)(chunk->code[offset + 2] << 16) |
+                         (uint32_t)(chunk->code[offset + 3] << 8) |
+                         (uint32_t)chunk->code[offset + 4];
+
+    printf("%-16s %4d '", name, nameIndex);
+    printValue(chunk->constants.values[nameIndex]);
+    printf("'\n");
+    return offset + 5;
+}
+
 static int jumpInstruction(const char *name, int sign, Chunk *chunk, int offset) {
     uint16_t jump = (uint16_t)(chunk->code[offset + 1] << 8);
     jump |= chunk->code[offset + 2];
@@ -87,6 +99,25 @@ static int constantInstruction(const char *name, Chunk *chunk, int offset) {
     printf("'\n");
     return offset + 2; // Remember that disassembleInstruction() also returns a number to tell the caller the offset of the beginning of the next instruction.
                        // Where OP_RETURN was only a single byte, OP_CONSTANT is two, one for the opcode and one for the operand.
+}
+
+static int longConstantInstruction(const char *name, Chunk *chunk, int offset) {
+    uint32_t constant = (uint32_t)(chunk->code[offset + 1] << 24) |
+                        (uint32_t)(chunk->code[offset + 2] << 16) |
+                        (uint32_t)(chunk->code[offset + 3] << 8) |
+                        (uint32_t)chunk->code[offset + 4];
+
+    printf("%-16s %4d '", name, constant);
+
+    Value value = chunk->constants.values[constant];
+    if (IS_STRING(value)) {
+        printScriptString(AS_STRING(value));
+    } else {
+        printValue(value);
+    }
+
+    printf("'\n");
+    return offset + 5;
 }
 
 static int invokeInstruction(const char *name, Chunk *chunk, int offset) {
@@ -129,6 +160,8 @@ int disassembleInstruction(Chunk *chunk, int offset) {
     switch (instruction) {
         case OP_CONSTANT:
             return constantInstruction("OP_CONSTANT", chunk, offset);
+        case OP_CONSTANT_LONG:
+            return longConstantInstruction("OP_CONSTANT_LONG", chunk, offset);
         case OP_NIL:
             return simpleInstruction("OP_NIL", offset);
         case OP_TRUE:
@@ -153,6 +186,14 @@ int disassembleInstruction(Chunk *chunk, int offset) {
             return constantInstruction("OP_DEFINE_GLOBAL_PERM", chunk, offset);
         case OP_SET_GLOBAL:
             return constantInstruction("OP_SET_GLOBAL", chunk, offset);
+        case OP_GET_GLOBAL_LONG:
+            return longGlobalInstruction("OP_GET_GLOBAL_LONG", chunk, offset);
+        case OP_SET_GLOBAL_LONG:
+            return longGlobalInstruction("OP_SET_GLOBAL_LONG", chunk, offset);
+        case OP_DEFINE_GLOBAL_LONG:
+            return longGlobalInstruction("OP_DEFINE_GLOBAL_LONG", chunk, offset);
+        case OP_DEFINE_GLOBAL_PERM_LONG:
+            return longGlobalInstruction("OP_DEFINE_GLOBAL_PERM_LONG", chunk, offset);
         case OP_GET_UPVALUE:
             return byteInstruction("OP_GET_UPVALUE", chunk, offset);
         case OP_SET_UPVALUE:

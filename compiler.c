@@ -262,18 +262,26 @@ static void emitReturn() {
     emitByte(OP_RETURN);
 }
 
-static uint8_t makeConstant(Value value) {
+static uint32_t makeConstant(Value value) {
     int constant = addConstant(currentChunk(), value);
-    if (constant > UINT8_MAX) {
+    if (constant > UINT32_MAX) {
         error("Too many constants in one chunk.");
         return 0;
     }
 
-    return (uint8_t)constant;
+    return (uint32_t)constant;
 }
 
 static void emitConstant(Value value) {
-    emitBytes(OP_CONSTANT, makeConstant(value));
+    uint32_t constant = makeConstant(value);
+    if (constant < UINT8_MAX) {
+        emitBytes(OP_CONSTANT, constant);
+    } else {
+        emitByte(OP_CONSTANT_LONG);
+        emitBytes((constant >> 24) & 0xff, (constant >> 16) & 0xff);
+        emitBytes((constant >> 8) & 0xff, (constant >> 0) & 0xff);
+    }
+
 }
 
 static void patchJump(int offset) {
@@ -349,7 +357,7 @@ static void declaration();
 static ParseRule* getRule(TokenType type);
 static void parsePrecedence(Precedence precedence);
 
-static uint8_t identifierConstant(Token *name) {
+static uint32_t identifierConstant(Token *name) {
     return makeConstant(OBJ_VAL(copyString(name->start, name->length)));
 }
 
@@ -453,7 +461,7 @@ static void declareVariable(bool isPerm) {
     addLocal(*name, isPerm);
 }
 
-static uint8_t parseVariable(const char *errorMessage, bool isPerm) {
+static uint32_t parseVariable(const char *errorMessage, bool isPerm) {
     consume(TOKEN_IDENTIFIER, errorMessage);
 
     declareVariable(isPerm);
@@ -473,10 +481,21 @@ static void defineVariable(uint8_t global, bool isPerm) {
         return;
     }
 
-    if (isPerm) {
-        emitBytes(OP_DEFINE_GLOBAL_PERM, global);
-    } else {
-        emitBytes(OP_DEFINE_GLOBAL, global);
+    if (global > UINT8_MAX) {
+        if (isPerm) {
+            emitByte(OP_DEFINE_GLOBAL_PERM_LONG);
+        } else {
+            emitByte(OP_DEFINE_GLOBAL_LONG);
+        }
+        emitBytes((global >> 24) & 0xff, (global >> 16) & 0xff);
+        emitBytes((global >> 8) & 0xff, (global >> 0) & 0xff);
+    }
+    else {
+        if (isPerm) {
+            emitBytes(OP_DEFINE_GLOBAL_PERM, (uint8_t)global);
+        } else {
+            emitBytes(OP_DEFINE_GLOBAL, (uint8_t)global);
+        }
     }
 }
 
@@ -702,11 +721,23 @@ static void namedVariable(Token name, bool canAssign) {
         if (arg != -1 && current->locals[arg].isPerm) {
             error("Can't reassign to permanent variable");
         }
-
         expression();
-        emitBytes(setOp, (uint8_t)arg);
+
+        if (arg > UINT8_MAX && setOp == OP_SET_GLOBAL) {
+            emitByte(OP_SET_GLOBAL_LONG);
+            emitBytes((arg >> 24) & 0xff, (arg >> 16) & 0xff);
+            emitBytes((arg >> 8) & 0xff, (arg >> 0) & 0xff);
+        } else {
+            emitBytes(setOp, (uint8_t)arg);
+        }
     } else {
-        emitBytes(getOp, (uint8_t)arg);
+        if (arg > UINT8_MAX && getOp == OP_GET_GLOBAL) {
+            emitByte(OP_GET_GLOBAL_LONG);
+            emitBytes((arg >> 24) & 0xff, (arg >> 16) & 0xff);
+            emitBytes((arg >> 8) & 0xff, (arg >> 0) & 0xff);
+        } else {
+            emitBytes(getOp, (uint8_t)arg);
+        }
     }
 }
 
