@@ -61,10 +61,11 @@ static void runtimeError(const char *format, ...) {
     resetStack();
 }
 
+static Value peek(int distance);
 void defineNative(const char *name, NativeFn function, int arity) {
     push(OBJ_VAL(copyString(name, (int)strlen(name))));
     push(OBJ_VAL(newNative(function, arity)));
-    tableSet(&vm.globals, AS_STRING(vm.stack[0]), vm.stack[1]);
+    tableSet(&vm.globals, AS_STRING(peek(1)), peek(0));
     pop();
     pop();
 }
@@ -653,6 +654,7 @@ static InterpretResult run() {
 
                 if (strcmp(name->chars, "math") == 0) {
                     defineMathNatives();
+                    push(NIL_VAL);
                     break;
                 }
 

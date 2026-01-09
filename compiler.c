@@ -1249,6 +1249,7 @@ static void importStatement() {
 
     uint8_t constant = makeConstant(OBJ_VAL(copyString(parser.previous.start + 1, parser.previous.length - 2)));
     emitBytes(OP_IMPORT, constant);
+    emitByte(OP_POP);
     consume(TOKEN_SEMICOLON, "Expect ';' after import");
 }
 
