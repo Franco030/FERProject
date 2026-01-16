@@ -25,3 +25,5 @@ add_executable(cfer main.c
         table.h
         natives.c
         natives.h)
+
+target_link_libraries(cfer m)
